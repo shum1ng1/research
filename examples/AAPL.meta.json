@@ -1,0 +1,43 @@
+{
+  "ticker": "AAPL",
+  "dry_run": false,
+  "ratios": {
+    "pe": 39.52179,
+    "debt_to_equity": 1.3380304612588665,
+    "current_ratio": 0.8932929222186667,
+    "gross_margin": 0.4690516410716045
+  },
+  "assessment": {
+    "ticker": "AAPL",
+    "as_of": "2026-10-30",
+    "ratios": {
+      "pe": 39.52179,
+      "debt_to_equity": 1.3380304612588665,
+      "current_ratio": 0.8932929222186667,
+      "gross_margin": 0.4690516410716045
+    },
+    "assessment": {
+      "growth": "YoY revenue growth is 6.4%, showing continued, albeit moderate, top-line expansion from a very large base. [income_statement 2025-09-30]",
+      "profitability": "Gross margin is 46.9%, which is healthy, and net income grew significantly to $112.0B from $93.7B, indicating strong bottom-line execution. [income_statement 2025-09-30]",
+      "solvency": "Debt-to-equity of 1.34 indicates a leveraged capital structure, but the current ratio of 0.89 is below 1, suggesting potential short-term liquidity pressure relative to typical industry expectations for a strong cash-generating business. [balance_sheet 2025-09-30]",
+      "overall_health": 4
+    },
+    "bull_case": "Strong net income growth and a robust gross margin demonstrate pricing power and operational efficiency, while continued revenue growth from a massive base shows resilient demand. [income_statement 2025-09-30]",
+    "bear_case": "Elevated leverage (D/E > 1) and a current ratio below 1 signal a reliance on debt and potential liquidity constraints, which could pressure financial flexibility if market conditions worsen. [balance_sheet 2025-09-30]",
+    "confidence": "high",
+    "sources_cited": [
+      "[income_statement 2025-09-30]",
+      "[balance_sheet 2025-09-30]"
+    ]
+  },
+  "review": {
+    "ok": true,
+    "invented_numbers": [],
+    "missing_citations": [],
+    "contradictions": [],
+    "suggestions": [
+      "The report correctly cites all figures and aligns with the assessment. The confidence level of 'high' is appropriate given the complete financial data for the period. No issues found."
+    ]
+  },
+  "report_path": "examples/AAPL.md"
+}
