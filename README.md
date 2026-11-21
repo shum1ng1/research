@@ -3,6 +3,8 @@
 多步骤 LLM 股票研究 agent（HKU ELEC7082 小组项目骨架）  
 Multi-step LLM equity-research agent scaffold (Lecture 6 pipeline).
 
+v0.1 四阶段编排（成员 A 的 Data/Reviewer + 成员 B 的 Analysis/Writer）见 [integration/README.md](integration/README.md)。旧命令 `python3 -m pipeline` 仍然可用，它不接收研究截止日。
+
 ```
 Data → Analysis → Writer → Reviewer
 ```
