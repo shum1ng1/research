@@ -136,6 +136,10 @@ class OrchestratorTests(unittest.TestCase):
         data_payload = self.saved["data"]["payload"]
         self.assertEqual(data_payload["cutoff_at"], summary["cutoff_at"])
         self.assertEqual(self.saved["analysis"]["payload"]["cutoff_at"], summary["cutoff_at"])
+        saved_config = json.loads((run / "config.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved_config["llm"]["mode"], "synthetic_templates")
+        self.assertFalse(saved_config["llm"]["enabled"])
+        self.assertFalse((run / "logs" / "llm_tools.jsonl").exists())
 
     def test_csco_cli(self):
         from integration.cli import main
@@ -274,6 +278,7 @@ class OrchestratorTests(unittest.TestCase):
 
         env = os.environ.copy()
         env["HKU_GENAI_API_KEY"] = ""
+        env["DEEPSEEK_API_KEY"] = ""
         env.pop("SEC_USER_AGENT", None)
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, env, clear=True), \
                 patch("urllib.request.urlopen", side_effect=blocked), \

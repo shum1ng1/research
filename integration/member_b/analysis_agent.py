@@ -68,11 +68,11 @@ def _infer_claim_type(name):
 
 
 def _polish_with_llm(findings, config):
+    """Offline no-op. Enabling this placeholder is not a model call."""
     llm = config.get("llm") or {}
     if not llm.get("enabled"):
         return findings, []
-    return findings, ["LLM 尚未接入具体实现，沿用模板 statement；"
-                      "接入时只允许覆盖 statement 字段"]
+    raise RuntimeError("the polish placeholder is not a live model; the tool-calling author is required")
 
 
 def _build_findings(derived, data_bundle, prefix):
@@ -181,8 +181,19 @@ def run(request, config, data_bundle, feedback=None):
     limitations = fin["limitations"] + price["limitations"] + val["limitations"]
     findings, scenario_assumption_id, scenario_shown = _build_findings(
         derived, data_bundle, prefix)
-    findings, llm_warnings = _polish_with_llm(findings, config)
-    warnings.extend(llm_warnings)
+    if (config.get("llm") or {}).get("enabled"):
+        from integration.llm_author import author_statements
+        from integration.member_a.tools.agent_llm import LLMError
+        try:
+            findings = author_statements(findings, derived, data_bundle, config)
+        except LLMError as exc:
+            return _envelope(request.get("run_id", "unknown"), "analysis", "failed", {},
+                             errors=[{"code": "LLM_ERROR", "message": str(exc), "retryable": False}],
+                             config=config)
+        warnings.append("分析句子由模型按工具结果改写；数字仍只来自 Python 计算，失败时不会退回模板句。")
+    else:
+        findings, llm_warnings = _polish_with_llm(findings, config)
+        warnings.extend(llm_warnings)
 
     if feedback and feedback.get("target_agent") not in (None, "analysis"):
         warnings.append("反馈指定对象不属于 B 的分析阶段，未做返工改动")

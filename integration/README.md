@@ -12,7 +12,26 @@
 python3 -m integration --ticker MSFT --as-of 2026-11-13 --timezone Asia/Hong_Kong --offline
 ```
 
-不加 `--offline` 也是同一条离线路径。只有显式加上 `--live` 才会尝试港大网关，而且那条路径没有在这里验证过。
+不加 `--offline` 也是同一条离线路径。离线结果里的 `llm.mode` 是 `synthetic_templates`。它不是模型调用，不能拿去当课程里的 LLM 演示。
+
+## 实况模型（需要你自己的密钥；这里没有替你跑通过）
+
+官方 DeepSeek，不是港大网关：
+
+```bash
+export DEEPSEEK_API_KEY='你的官方密钥'
+python3 -m integration --ticker MSFT --as-of 2026-11-13 --timezone Asia/Hong_Kong --live --provider deepseek
+```
+
+- 地址固定为 `https://api.deepseek.com/chat/completions`。默认模型 `deepseek-flash`，可用环境变量 `DEEPSEEK_MODEL` 改成文档里的 `deepseek-v4-pro`。
+- 请求会关闭思考模式，并且只发送我们列出的函数。不会挂上 `deepseek_web_search` 或 `deepseek_read_url`。
+- 港大网关仍可用：`--live --provider hku`，读取 `HKU_GENAI_API_KEY`。那个地址是 `https://api.hku.hk/foundry/student`，不是 DeepSeek 官方 API。
+- 没有密钥、HTTP 失败、模型返回坏 JSON、调用了未登记工具、或超过工具次数，阶段状态都是 `failed`。程序不会改回模板句，也不会偷偷换成合成数据。
+- 数字仍由 Python 计算。模型只能把已经算好的展示串原样写进句子，并引用数据包里已有的 evidence id。
+- 实况成功时，`logs/llm_tools.jsonl` 会记下分析与写作的工具名和接受或拒绝。这是“确实发生过工具调用”的记录。`summary.json` 的 `llm_transport` 为 `deepseek_official`。
+- Seeking Alpha 没有可用的自动检索。没有你自己准备的本地 manifest 时，覆盖状态是 `not_checked`。电话会逐字稿也一样，只导入你放进 manifest 的文件。不能把当前实现说成课程材料已经齐。
+
+本次开发没有使用真实密钥，也没有访问 DeepSeek、港大、Yahoo 或 SEC。上面的实况命令需要你在自己的电脑上配置密钥后再验证。
 
 - `--as-of` 是研究日，格式 `YYYY-MM-DD`。
 - `--timezone` 是 IANA 时区名。程序把它收成当天 `23:59:59` 的 `cutoff_at`。香港是 `2026-11-13T23:59:59+08:00`，纽约是 `2026-11-13T23:59:59-05:00`，这两个时刻不是同一个瞬间。

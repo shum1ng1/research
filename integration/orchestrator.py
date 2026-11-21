@@ -36,7 +36,10 @@ LIMITATIONS = [
     "港大 Foundry 地址 https://api.hku.hk/foundry/student 是学生网关。默认模型名 DeepSeek-V3.2 只是该网关上的部署名，不是 DeepSeek 官方端点。本次没有验证真实网络调用。",
     "真实 Yahoo 历史价不是时点档案，供应商日后修订可能改变旧 K 线。离线演示不访问 Yahoo。",
     "未导出 PDF，页数检查保持 not_checked。离线演示把人工原表抽查设为 0，并在审核限制里说明。",
-    "Analysis 的 LLM 润色没有接通。数字来自确定性计算。",
+    "离线分析句和报告段落是模板，llm.mode 为 synthetic_templates，不能算作模型调用。",
+    "实况模式才启用工具调用。数字仍由 Python 计算；模型只能逐字抄写这些展示串。失败不会退回模板。",
+    "官方 DeepSeek 是 https://api.deepseek.com/chat/completions ，环境变量 DEEPSEEK_API_KEY，默认模型 deepseek-flash。思考模式关闭，且不挂载网页搜索工具。",
+    "Seeking Alpha 没有自动登录或检索。没有本地 manifest 时该项覆盖为 not_checked。电话会逐字稿同样只接受已提供的本地文件。",
 ]
 
 
@@ -84,8 +87,12 @@ def final_status(execution: str, decision: str | None) -> str:
 
 
 class Orchestrator:
-    def __init__(self, ticker, as_of, timezone_name, *, offline, output_root, run_id, language, runners):
+    def __init__(self, ticker, as_of, timezone_name, *, offline, output_root, run_id, language, runners,
+                 provider):
+        if provider not in {"deepseek", "hku"}:
+            raise ContractError("provider must be deepseek or hku")
         self.offline = offline
+        self.provider = provider
         self.output_root = Path(output_root).resolve()
         self.run_id = run_id or make_run_id(ticker, as_of, timezone_name)
         self.run_dir = self.output_root / "runs" / self.run_id
@@ -113,10 +120,11 @@ class Orchestrator:
             "review_mode": "llm",
             "allow_manual_import": True,
             "require_final_pdf": False,
-            "llm": {"enabled": False, "label": "not_connected"},
             "offline": self.offline,
         }
         if self.offline:
+            config["llm"] = {"enabled": False, "mode": "synthetic_templates", "provider": None}
+            config["llm_provider"] = None
             config.update({
                 "target_annual_reports": 1,
                 "target_quarters": 2,
@@ -128,14 +136,17 @@ class Orchestrator:
                 "review_transport": "synthetic_fixture",
             })
         else:
+            transport = "deepseek_official" if self.provider == "deepseek" else "hku_student_gateway"
+            config["llm"] = {"enabled": True, "mode": "tool_calling", "provider": self.provider}
+            config["llm_provider"] = self.provider
             config.update({
                 "target_annual_reports": 3,
                 "target_quarters": 8,
                 "target_management_events": 4,
                 "target_seekingalpha_materials": 2,
                 "original_table_sample_size": 10,
-                "llm_transport": "hku_student_gateway",
-                "review_transport": "hku_student_gateway",
+                "llm_transport": transport,
+                "review_transport": transport,
             })
         return config
 
@@ -296,9 +307,11 @@ class Orchestrator:
         if self.runners is None:
             self.runners = self._default_runners()
         public_config = {key: value for key, value in self.config.items()
-                         if key not in {"project_root", "output_root", "data_root", "sec_user_agent", "api_key", "synthetic_accns"}}
+                         if key not in {"project_root", "output_root", "data_root", "sec_user_agent", "api_key",
+                                        "synthetic_accns", "llm_trace_path"}}
         public_config["project_root"] = "."
         _write(self.run_dir / "config.json", public_config)
+        self.config["llm_trace_path"] = str(self.run_dir / "logs" / "llm_tools.jsonl")
         attempt = 0
         start = "data"
         round_number = 0
@@ -378,12 +391,12 @@ class Orchestrator:
 
 def orchestrate(ticker: str, as_of: str, timezone_name: str, *, offline: bool = False,
                 output_root: str = ".", run_id: str | None = None, language: str = "zh-CN",
-                runners=None) -> dict:
+                runners=None, provider: str = "deepseek") -> dict:
     """Run the four-stage contract. Raises ContractError only for bad CLI inputs before a run directory exists."""
     try:
         worker = Orchestrator(
             ticker, as_of, timezone_name, offline=offline, output_root=output_root,
-            run_id=run_id, language=language, runners=runners,
+            run_id=run_id, language=language, runners=runners, provider=provider,
         )
     except ContractError as exc:
         return {

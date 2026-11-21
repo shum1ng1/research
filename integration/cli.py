@@ -16,7 +16,9 @@ def main(argv=None) -> int:
     parser.add_argument("--timezone", required=True, help="IANA timezone, for example Asia/Hong_Kong")
     parser.add_argument("--offline", action="store_true", help="Synthetic fixture. This is also the default.")
     parser.add_argument("--live", action="store_true",
-                        help="Use the HKU student gateway. Unverified. Requires HKU_GENAI_API_KEY.")
+                        help="Enable the configured live model. Default provider is official DeepSeek.")
+    parser.add_argument("--provider", choices=("deepseek", "hku"), default="deepseek",
+                        help="Live provider. deepseek reads DEEPSEEK_API_KEY; hku reads HKU_GENAI_API_KEY.")
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--output-root", default=".")
     parser.add_argument("--language", default="zh-CN")
@@ -26,6 +28,7 @@ def main(argv=None) -> int:
     summary = orchestrate(
         args.ticker, args.as_of, args.timezone, offline=not args.live,
         output_root=args.output_root, run_id=args.run_id, language=args.language,
+        provider=args.provider,
     )
     print(json.dumps({
         "final_status": summary.get("final_status"),
@@ -35,6 +38,7 @@ def main(argv=None) -> int:
         "report_path": summary.get("report_path"),
         "log_path": summary.get("log_path"),
         "errors": summary.get("errors"),
+        "llm_transport": summary.get("llm_transport"),
     }, ensure_ascii=False, indent=2))
     status = summary.get("final_status")
     if status == "success":

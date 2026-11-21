@@ -41,12 +41,25 @@ def run(request, config, data_bundle, analysis_bundle, feedback=None):
     report_path = f"{run_dir}/reports/{ticker}_draft.md"
 
     layout = report_template.build_layout(analysis_bundle, data_bundle, config)
+    warnings = []
+    template_id = config.get("template_id", "equity_note_v0.1")
+    if (config.get("llm") or {}).get("enabled"):
+        from integration.llm_author import author_paragraphs
+        from integration.member_a.tools.agent_llm import LLMError
+        try:
+            paragraphs = author_paragraphs(layout, analysis_bundle, data_bundle, config)
+        except LLMError as exc:
+            return _envelope(run_id, "writer", "failed", {},
+                             errors=[{"code": "LLM_ERROR", "message": str(exc), "retryable": False}],
+                             config=config)
+        for paragraph_id, text in paragraphs.items():
+            layout["paragraphs"][paragraph_id] = text
+        template_id = "equity_note_v0.1_model_paragraphs"
+        warnings.append("报告段落由模型提交，且必须原样包含已审核的分析句；没有新数字。失败时不会改回模板。")
     report_template.render_markdown(layout, analysis_bundle, data_bundle,
                                     report_path, output_root)
     claims = claim_manifest.build_claim_manifest(
         analysis_bundle, layout, data_bundle, config)
-
-    warnings = []
     if feedback and feedback.get("target_agent") == "writer":
         warnings.append("writer 返工：只重渲染受影响段落与 claim_manifest，"
                         "不改动 AnalysisBundle")
@@ -66,7 +79,7 @@ def run(request, config, data_bundle, analysis_bundle, feedback=None):
         "input_bundle_revision": data_bundle.get("revision", 1),
         "input_analysis_id": analysis_bundle["analysis_id"],
         "input_analysis_revision": analysis_bundle.get("revision", 1),
-        "template_id": config.get("template_id", "equity_note_v0.1"),
+        "template_id": template_id,
         "language": request.get("language", "zh-CN"),
         "report_path": report_path,
         "pdf_path": None,
