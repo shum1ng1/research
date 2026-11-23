@@ -101,7 +101,7 @@ python3 -m integration --ticker MSFT --as-of 2026-11-13 --timezone Asia/Hong_Kon
 
 不带 `--offline` 时，Data 和 Reviewer 会调用 `integration/member_a/tools/agent_llm.py`。默认地址是港大学生 Foundry 网关 `https://api.hku.hk/foundry/student`，路径是 `POST /models/chat/completions`，默认部署名是 `DeepSeek-V3.2`。这是学校网关上的名字，**不是 DeepSeek 官方 API**。本次改动没有用真实密钥，也没有访问 Yahoo、SEC 或该网关。
 
-真实 Yahoo 历史价即使以后接上，也不是“当时看到的档案”，供应商以后仍可能修订旧 K 线。
+真实 Yahoo 历史价即使以后接上，也不是“当时看到的档案”，供应商以后仍可能修订旧 K 线。若本机的交易所日历比研究日更短，已下载的交易日仍会保留，收盘时刻改用美东 16:00，并在 `quality_checks` 里记一条警告；日历覆盖到的日子（含提前收盘）仍用交易所时刻。Yahoo 没有返回的日期不会被编造。Yahoo 本身返回空表时，这一步仍会失败。
 
 人工对照原表的抽查仍然没有做。PDF 页数会在导出后自动核对，超过 10 页会失败。离线配置把人工抽查数量设为 0，并在限制里写明。
 
