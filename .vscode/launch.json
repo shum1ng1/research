@@ -1,0 +1,45 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Integration: offline MSFT",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "integration",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "--ticker",
+        "MSFT",
+        "--as-of",
+        "2026-11-13",
+        "--timezone",
+        "Asia/Hong_Kong",
+        "--offline"
+      ],
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "preLaunchTask": "prepare-integration"
+    },
+    {
+      "name": "Integration: live DeepSeek MSFT",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "integration",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "--ticker",
+        "MSFT",
+        "--as-of",
+        "2026-11-13",
+        "--timezone",
+        "Asia/Hong_Kong",
+        "--live",
+        "--provider",
+        "deepseek"
+      ],
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "preLaunchTask": "prepare-integration"
+    }
+  ]
+}

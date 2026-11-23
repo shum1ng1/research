@@ -370,6 +370,26 @@ class OrchestratorTests(unittest.TestCase):
         self.assertEqual(result["payload"]["decision"], "revise", result["payload"].get("issues"))
         self.assertTrue(any(item["target_agent"] == "writer" for item in result["payload"]["issues"]))
 
+    def test_local_launch_files_have_no_secrets(self):
+        root = ROOT
+        ignore = (root / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn(".env\n", ignore if ignore.endswith("\n") else ignore + "\n")
+        example = (root / ".env.example").read_text(encoding="utf-8")
+        self.assertIn("DEEPSEEK_API_KEY=\n", example)
+        self.assertIn("SEC_USER_AGENT=\n", example)
+        self.assertNotIn("sk-", example)
+        self.assertNotRegex(example, r"DEEPSEEK_API_KEY=\S+")
+        requirements = (root / "requirements.txt").read_text(encoding="utf-8")
+        self.assertIn("exchange-calendars", requirements)
+        launch = json.loads((root / ".vscode" / "launch.json").read_text(encoding="utf-8"))
+        modules = [item["module"] for item in launch["configurations"]]
+        self.assertEqual(modules, ["integration", "integration"])
+        self.assertTrue(all(item["cwd"] == "${workspaceFolder}" for item in launch["configurations"]))
+        script = (root / "Run-Integration.command").read_text(encoding="utf-8")
+        self.assertIn('cd "$(dirname "$0")"', script)
+        self.assertIn("python -m integration", script)
+        self.assertNotIn("sk-", script)
+
     def test_legacy_pipeline_entry_is_unchanged(self):
         pipeline = (ROOT / "pipeline.py").read_text(encoding="utf-8")
         self.assertIn("def run(ticker: str, *, dry_run: bool = False, news_limit: int = 5)", pipeline)

@@ -3,11 +3,22 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 from integration.orchestrator import orchestrate
 
 
+def _load_repo_env() -> None:
+    """Load the gitignored repo-root .env. Existing process variables win."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
+
+
 def main(argv=None) -> int:
+    _load_repo_env()
     parser = argparse.ArgumentParser(
         description="MSFT/CSCO v0.1 orchestration. Defaults to the offline synthetic fixture."
     )

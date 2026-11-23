@@ -4,6 +4,27 @@
 
 只支持 **MSFT** 和 **CSCO**。其它代码会被拒绝。
 
+## Mac 上一键运行
+
+密钥只放在你自己电脑的 `.env` 里。这个文件已经在 `.gitignore` 中，**不要提交，也不要贴到聊天里**。
+
+1. 在仓库根目录把示例复制成本地文件（已有 `.env` 时不要覆盖）：
+
+```bash
+cp .env.example .env
+```
+
+2. 用文本编辑器打开 `.env`。离线演示可以先空着。实况官方 DeepSeek 时填写：
+   - `DEEPSEEK_API_KEY`：你在 DeepSeek 官网申请的密钥
+   - `SEC_USER_AGENT`：项目名加你的真实联系邮箱，例如 `elec7082-research you@example.com`。SEC 要求请求带这个说明，它不是密钥，但仍然不要提交。
+
+3. 选一种启动方式。默认都是 MSFT、`2026-11-13`、`Asia/Hong_Kong`。
+
+- **VS Code / Cursor：** 打开“运行和调试”，选择 `Integration: offline MSFT` 或 `Integration: live DeepSeek MSFT`，点运行。配置在 `.vscode/launch.json`，以模块 `integration` 从仓库根目录启动，不会去“运行当前文件”。第一次运行会先执行任务 `prepare-integration`：如果没有 `.env` 就从示例复制一份，然后 `pip install -r requirements.txt`。
+- **Finder 双击：** 双击仓库根目录的 `Run-Integration.command`。终端会创建 `.venv`、安装依赖，并问你要离线还是实况。直接回车是离线。
+
+`python3 -m integration ...` 仍然可用。程序启动时会读取仓库根目录的 `.env`，已经存在的环境变量不会被覆盖。
+
 ## 一条不用密钥的命令
 
 在仓库根目录执行：
@@ -65,7 +86,7 @@ python3 -m integration --ticker MSFT --as-of 2026-11-13 --timezone Asia/Hong_Kon
 
 离线夹具里的财报、股价和“管理层”句子都是编出来的，文件里标了 `SYNTHETIC TEST FIXTURE`。语义判断也是替身，模型名记为 `synthetic_fixture`。不要把 `report.md` 当成微软或思科的研究报告。
 
-没有密钥时不要去掉 `--offline`。那样会走港大学生网关，Data 阶段会因为没有 `HKU_GENAI_API_KEY` 失败，并且不会假装已经调用了模型。
+不加 `--live` 时一直是离线演示，不会去访问港大或 DeepSeek。实况必须显式加上 `--live`，并且密钥来自本机 `.env`。
 
 ## 和旧流水线的差别
 
