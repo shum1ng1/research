@@ -43,6 +43,8 @@ def limit_live_findings(skeleton, derived, max_slots=_MAX_LIVE_SLOTS):
     ranked = []
     for name in _LIVE_NAMES:
         for finding in skeleton:
+            if finding.get("claim_type") in ("scenario_assumption", "management_guidance"):
+                continue
             if metric_name(finding) == name and finding not in ranked:
                 ranked.append(finding)
     reserved = []
@@ -52,7 +54,11 @@ def limit_live_findings(skeleton, derived, max_slots=_MAX_LIVE_SLOTS):
                 reserved.append(finding)
                 break
     room = max(max_slots - len(reserved), 0)
-    chosen = list(ranked[:room])
+    chosen = []
+    for finding in ranked:
+        if len(chosen) >= room:
+            break
+        chosen.append(finding)
     for finding in skeleton:
         if len(chosen) >= room:
             break
@@ -61,8 +67,9 @@ def limit_live_findings(skeleton, derived, max_slots=_MAX_LIVE_SLOTS):
         metric = by_id.get((finding.get("metric_ids") or [None])[0]) or {}
         if metric.get("value") is None:
             chosen.append(finding)
-    chosen.extend(reserved)
-    chosen = chosen[:max_slots]
+    for finding in reserved:
+        if finding not in chosen and len(chosen) < max_slots:
+            chosen.append(finding)
     omitted = len(skeleton) - len(chosen)
     note = ""
     if omitted > 0:

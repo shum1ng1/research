@@ -410,6 +410,30 @@ class ToolLoopFixTests(unittest.TestCase):
         self.assertGreater(len(skeleton) - len(chosen), 30)
         self.assertEqual(sum(item["claim_type"] == "management_guidance" for item in chosen), 1)
 
+    def test_scenario_sharing_a_metric_keeps_unique_claim_ids(self):
+        from integration.llm_author import limit_live_findings
+        derived = [{
+            "metric_id": "D1", "name": "gross_margin", "value": 0.45, "unit": "ratio",
+            "calculation_status": "calculated",
+        }]
+        skeleton = [
+            {"claim_id": "Cmargin", "claim_type": "reported_fact", "metric_ids": ["D1"],
+             "evidence_ids": [], "statement": "当季毛利率 45.0%。"},
+            {"claim_id": "Cscenario", "claim_type": "scenario_assumption", "metric_ids": ["D1"],
+             "evidence_ids": [], "assumption_ids": ["ASM001"], "statement": "情景假设"},
+        ]
+        for index in range(12):
+            skeleton.append({
+                "claim_id": f"G{index}", "claim_type": "management_guidance",
+                "metric_ids": [], "evidence_ids": [f"E{index}"], "statement": "管理层指引",
+            })
+        chosen, _note = limit_live_findings(skeleton, derived)
+        ids = [item["claim_id"] for item in chosen]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertEqual(ids.count("Cscenario"), 1)
+        self.assertIn("Cmargin", ids)
+        self.assertIn("Cscenario", ids)
+
     def test_parallel_batch_still_runs_a_valid_submit(self):
         calls = {"submit": 0}
 
