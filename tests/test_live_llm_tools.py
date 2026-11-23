@@ -208,8 +208,14 @@ class AuthorTests(unittest.TestCase):
             if "slots" in payload:
                 statements = []
                 for slot in payload["slots"]:
-                    text = "The filing states " + "".join(slot["required_display"])
-                    if not slot["required_display"]:
+                    name = slot.get("required_name") or "metric"
+                    if slot.get("require_calculated"):
+                        text = f"The calculated {name} is " + "".join(slot["required_display"])
+                    elif slot["required_display"]:
+                        text = f"The {name} is " + "".join(slot["required_display"])
+                    elif name != "metric":
+                        text = f"The {name} is unavailable and no estimate was made"
+                    else:
                         text = "This item is unavailable and no estimate was made"
                     statements.append({"claim_id": slot["claim_id"], "statement": text})
                 return _tool_call("submit_finding_statements", {"statements": statements}, "submit"), {
@@ -235,8 +241,9 @@ class AuthorTests(unittest.TestCase):
             )
             self.assertIn(analysis["status"], {"success", "partial"}, analysis.get("errors"))
             statements = [item["statement"] for item in analysis["payload"]["findings"]]
-            self.assertTrue(any(item.startswith("The filing states ") and "10.0%" in item for item in statements))
-            self.assertFalse(any(item == "Revenue grew 10.0% year over year." for item in statements))
+            self.assertTrue(any("revenue growth" in item and "10.0%" in item for item in statements))
+            self.assertFalse(any(item.startswith("Revenue growth is calculated from the latest") for item in statements))
+            self.assertFalse(any("referenced metric" in item for item in statements))
             written = run_writer(
                 {"run_id": "live", "ticker": "MSFT", "cutoff_at": bundle["cutoff_at"]},
                 config, bundle, analysis["payload"],
@@ -244,7 +251,7 @@ class AuthorTests(unittest.TestCase):
             self.assertIn(written["status"], {"success", "partial"}, written.get("errors"))
             self.assertEqual(written["payload"]["template_id"], "equity_note_v0.1_model_paragraphs")
             report = Path(tmp, written["payload"]["report_path"]).read_text(encoding="utf-8")
-            self.assertIn("Report paragraph: The filing states ", report)
+            self.assertIn("Report paragraph: The calculated revenue growth is ", report)
             self.assertNotRegex(report, r"[\u4e00-\u9fff]")
             trace = Path(tmp, "llm_tools.jsonl").read_text(encoding="utf-8")
             self.assertIn("submit_finding_statements", trace)
@@ -283,6 +290,8 @@ class ToolLoopFixTests(unittest.TestCase):
         from integration.llm_author import _check_text
         self.assertIn("English", _check_text("营收增长 10.0%。", ["10.0%"], []))
         self.assertEqual(_check_text("Revenue grew 10.0% year over year.", ["10.0%"], []), "")
+        self.assertIn("referenced metric", _check_text(
+            "The referenced metric is 10.0%.", ["10.0%"], [], "revenue growth", True))
 
     def test_read_tool_success_is_logged_ok(self):
         def complete_stub(messages, config, tools=None, json_output=False):

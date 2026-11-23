@@ -13,7 +13,7 @@ LLM 接入点见 _polish_with_llm()：默认关闭；开启后只允许按 claim
 statement，不得改数字、ID、claim_type、metric_ids、evidence_ids。
 """
 from integration.member_b.tools import finance_metrics, price_metrics, valuation
-from integration.member_b.tools.formatting import display_string, json_safe, prefix_from_bundle
+from integration.member_b.tools.formatting import display_string, json_safe, metric_label, prefix_from_bundle
 
 SCHEMA_VERSION = "0.1"
 
@@ -46,26 +46,62 @@ def _validate(request, data_bundle):
     return errors
 
 
-def _statement_for(name, value, unit, display_unit=None):
+_MARGIN_SCENARIO = (
+    ("gross_margin", "gross margin"),
+    ("net_margin", "net margin"),
+    ("fcf_margin", "free-cash-flow margin"),
+)
+
+
+def _statement_for(metric):
     """正文数字与 numeric_mention 共用 display_string，逐字一致。"""
-    shown = display_string(value, unit, display_unit=display_unit)
+    name = metric["name"]
+    label = metric_label(name)
+    shown = display_string(metric["value"], metric["unit"],
+                           sign=name.startswith("price_return"),
+                           display_unit=metric.get("display_unit"))
     if name == "pe_ratio":
-        return (f"The price-to-earnings ratio from the latest close and earnings per share is {shown}. "
-                "This is not a valuation opinion.")
-    templates = {
-        "revenue_growth_yoy": f"Revenue grew {shown} year over year.",
-        "gross_margin": f"Gross margin for the period is {shown}.",
-        "net_margin": f"Net margin for the period is {shown}.",
-        "free_cash_flow": f"Free cash flow for the period is {shown} USD.",
-        "fcf_margin": f"Free-cash-flow margin is {shown}.",
-        "price_return_window": f"The price change over the window is {display_string(value, unit, sign=True)}.",
-        "price_volatility_window": f"Annualized volatility over the window is {shown}.",
-    }
-    return templates.get(name, f"{name} is {shown}.")
+        period = metric.get("eps_period_type") or ""
+        if period == "quarter":
+            eps_words = "quarterly earnings per share. It is not an annualized multiple"
+        elif period in {"year", "annual"}:
+            eps_words = "annual earnings per share"
+        elif period == "ttm":
+            eps_words = "trailing-twelve-month earnings per share"
+        else:
+            eps_words = "the latest available earnings per share. It is not annualized unless that period is already a full year"
+        return (f"The price-to-earnings ratio is calculated from the latest close divided by {eps_words}. "
+                f"The price-to-earnings ratio is {shown}. This is not a valuation opinion.")
+    if name == "free_cash_flow":
+        return (f"Free cash flow is calculated from operating cash flow minus capital expenditure. "
+                f"Free cash flow is {shown}. It is not a line item copied from the filing.")
+    if name == "fcf_margin":
+        return (f"Free-cash-flow margin is calculated from free cash flow and revenue. "
+                f"Free-cash-flow margin is {shown}. It is not a line item copied from the filing.")
+    if name == "revenue_growth_yoy":
+        return (f"Revenue growth is calculated from the latest two revenue periods. "
+                f"Revenue growth is {shown}.")
+    if name == "gross_margin":
+        return (f"Gross margin is calculated from gross profit and revenue for the same period. "
+                f"Gross margin is {shown}.")
+    if name == "net_margin":
+        return (f"Net margin is calculated from net income and revenue for the same period. "
+                f"Net margin is {shown}.")
+    if name == "price_return_window":
+        return (f"The price return is calculated from closes at or before the cutoff. "
+                f"The price return is {shown}.")
+    if name == "price_volatility_window":
+        return f"Annualized volatility is calculated as {shown}."
+    return f"{label} is calculated as {shown}."
 
 
 def _infer_claim_type(name):
-    return "analyst_inference" if name.startswith(("price_", "pe_")) else "reported_fact"
+    if name.startswith(("price_", "pe_")) or name in {
+        "revenue_growth_yoy", "gross_margin", "operating_margin", "net_margin",
+        "free_cash_flow", "fcf_margin",
+    }:
+        return "analyst_inference"
+    return "reported_fact"
 
 
 def _polish_with_llm(findings, config):
@@ -82,10 +118,10 @@ def _build_findings(derived, data_bundle, prefix):
 
     for d in derived:
         if d.get("calculation_status") != "calculated" or d.get("value") is None:
-            if d["name"] in ("price_volatility_window", "price_return_window"):
+            if d["name"] in ("price_volatility_window", "price_return_window", "pe_ratio"):
                 findings.append({
                     "claim_id": f"{prefix}C{len(findings) + 1:03d}",
-                    "statement": "This market metric is unavailable. No estimate was made.",
+                    "statement": f"The {metric_label(d['name'])} is unavailable. No estimate was made.",
                     "claim_type": "analyst_inference",
                     "metric_ids": [d["metric_id"]],
                     "evidence_ids": [],
@@ -100,8 +136,7 @@ def _build_findings(derived, data_bundle, prefix):
         ctype = _infer_claim_type(d["name"])
         findings.append({
             "claim_id": f"{prefix}C{len(findings) + 1:03d}",
-            "statement": _statement_for(d["name"], d["value"], d["unit"],
-                                        d.get("display_unit")),
+            "statement": _statement_for(d),
             "claim_type": ctype,
             "metric_ids": [d["metric_id"]],
             "evidence_ids": evidence_ids if ctype == "reported_fact" else [],
@@ -122,22 +157,21 @@ def _build_findings(derived, data_bundle, prefix):
             "assumption_ids": [],
         })
 
-    # 情景假设必须挂到一条真实可用的指标上，否则 A 的 Reviewer 会以
-    # "Supported claim has neither evidence nor metrics" 拒绝（已由 e2e 暴露）。
-    # 优先毛利率；毛利率不可用时退到任一可用的比率型指标，绝不生成无依据结论。
-    basis = next((d for d in derived if d["name"] == "gross_margin"
-                  and d.get("value") is not None and d.get("unit") == "ratio"), None)
-    if basis is None:
-        basis = next((d for d in derived if d.get("value") is not None
+    # Only a real margin can anchor the scenario. Revenue growth is not a margin.
+    basis, label = None, None
+    for name, pretty in _MARGIN_SCENARIO:
+        found = next((d for d in derived if d["name"] == name and d.get("value") is not None
                       and d.get("unit") == "ratio"), None)
+        if found is not None:
+            basis, label = found, pretty
+            break
     assumption_id, scenario_shown = f"{prefix}ASM001", "the current level"
     if basis is not None:
         scenario_shown = display_string(basis["value"], "ratio")
-        label = "gross margin" if basis["name"] == "gross_margin" else "the margin"
         findings.append({
             "claim_id": f"{prefix}C{len(findings) + 1:03d}",
             "statement": f"Scenario assumption: if {label} stays at {scenario_shown}, "
-                         "the margin range is unchanged under that assumption. This is not a reported result.",
+                         "that margin is held constant. This is not a reported result.",
             "claim_type": "scenario_assumption",
             "metric_ids": [basis["metric_id"]],
             "evidence_ids": [],
@@ -145,7 +179,8 @@ def _build_findings(derived, data_bundle, prefix):
         })
     # 连一个可用比率都没有时不生成情景 claim：A 的 Reviewer 要求每条 claim
     # 至少有 evidence 或 metric，无依据结论一律拒绝；此时由 limitations 说明。
-    return findings, assumption_id, scenario_shown
+    return findings, assumption_id, scenario_shown, label if basis is not None else None, (
+        basis["value"] if basis is not None else None)
 
 
 def _revision(feedback):
@@ -180,7 +215,7 @@ def run(request, config, data_bundle, feedback=None):
     derived.extend(val["derived_metrics"])
 
     limitations = fin["limitations"] + price["limitations"] + val["limitations"]
-    findings, scenario_assumption_id, scenario_shown = _build_findings(
+    findings, scenario_assumption_id, scenario_shown, scenario_label, scenario_value = _build_findings(
         derived, data_bundle, prefix)
     if (config.get("llm") or {}).get("enabled"):
         from integration.llm_author import author_statements
@@ -205,9 +240,10 @@ def run(request, config, data_bundle, feedback=None):
                   and d.get("calculation_status") != "calculated" for d in derived)
     assumptions = list(price.get("assumptions") or []) + list(val["assumptions"]) + [{
         "assumption_id": scenario_assumption_id,
-        "statement": f"Gross margin is assumed to remain at {scenario_shown}.",
+        "statement": (f"{scenario_label} is assumed to remain at {scenario_shown}."
+                      if scenario_label else "No margin scenario was calculated."),
         "basis": "analyst_assumption",
-        "value": next((d["value"] for d in derived if d["name"] == "gross_margin"), None),
+        "value": scenario_value,
         "unit": "ratio",
     }]
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 
 from .claim_manifest import _mention
+from .formatting import display_string, metric_label
 
 CHART_NAMES = (
     "revenue_growth_yoy",
@@ -21,8 +22,11 @@ CHART_NAMES = (
 )
 
 
-def _label(metric, mention):
-    return f"{metric['name']} {mention['display_text']}"
+def _label(metric):
+    shown = display_string(metric["value"], metric.get("unit"),
+                           sign=str(metric.get("name", "")).startswith("price_return"),
+                           display_unit=metric.get("display_unit"))
+    return f"{metric_label(metric['name'])} {shown}"
 
 
 def build_charts(analysis, report_dir, output_root):
@@ -50,8 +54,8 @@ def build_charts(analysis, report_dir, output_root):
 
     mentions = [mention for _metric, mention in derived]
     metric_ids = [metric["metric_id"] for metric, _mention in derived]
-    labels = [_label(metric, mention) for metric, mention in derived]
-    caption = "Chart: " + "; ".join(labels) + ". See ![chart](../charts/metrics.svg)."
+    labels = [_label(metric) for metric, _mention in derived]
+    caption = "Chart: " + "; ".join(labels) + "."
     # Caption must contain every display string exactly.
     for mention in mentions:
         if mention["display_text"] not in caption:

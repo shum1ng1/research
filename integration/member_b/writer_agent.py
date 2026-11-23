@@ -45,7 +45,7 @@ def run(request, config, data_bundle, analysis_bundle, feedback=None):
     ticker = request.get("ticker") or data_bundle.get("company", {}).get("company_id", "REPORT")
     report_path = f"{run_dir}/reports/{ticker}_draft.md"
 
-    layout = report_template.build_layout(analysis_bundle, data_bundle, config)
+    layout = report_template.build_layout(analysis_bundle, data_bundle, config, request)
     warnings = []
     template_id = config.get("template_id", "equity_note_v0.1")
     if (config.get("llm") or {}).get("enabled"):
@@ -74,6 +74,7 @@ def run(request, config, data_bundle, analysis_bundle, feedback=None):
                                     report_path, output_root)
     claims = claim_manifest.build_claim_manifest(
         analysis_bundle, layout, data_bundle, config)
+    claims["claim_manifest"].extend(layout.get("extra_claims") or [])
     if caption:
         claims["claim_manifest"].append({
             "report_claim_id": "RCHART",
@@ -89,14 +90,17 @@ def run(request, config, data_bundle, analysis_bundle, feedback=None):
         claims["charts"] = charts
     try:
         pdf_rel = f"{run_dir}/reports/{ticker}.pdf"
+        chart_file = None
+        if charts:
+            chart_file = os.path.join(output_root or ".", charts[0]["path"])
         blocks = [{"heading": "Equity research draft"}]
         for section in layout["sections"]:
             blocks.append({"heading": section["heading"]})
             for pid in section["paragraph_ids"]:
-                blocks.append({"text": layout["paragraphs"][pid]})
-        chart_file = None
-        if charts:
-            chart_file = os.path.join(output_root or ".", charts[0]["path"])
+                text = layout["paragraphs"][pid]
+                blocks.append({"text": text})
+                if chart_file and text.startswith("Chart:"):
+                    blocks.append({"text": "", "image": True})
         page_count = export_a4_pdf(
             blocks,
             os.path.join(output_root or ".", pdf_rel),

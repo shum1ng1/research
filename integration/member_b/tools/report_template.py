@@ -11,16 +11,40 @@ A 会逐行扫描报告正文：凡是未登记在 claim_manifest.text 里的数
 """
 import os
 
+from integration.member_a.tools.company_registry import resolve_company
+
+from .claim_manifest import _mention
+from .formatting import display_string, metric_label
+
 HEADINGS = [
-    "Summary", "Company", "Market", "Financial trends",
-    "Management guidance", "Scenario and risks", "Valuation", "Sources and gaps",
+    "Summary", "Company overview", "Market", "Financial trends",
+    "Management guidance", "Scenario and risks", "Valuation", "Sources and data gaps",
 ]
+_FINANCIAL = {
+    "revenue_growth_yoy", "gross_margin", "operating_margin", "net_margin",
+    "free_cash_flow", "fcf_margin",
+}
+_ZONE_WORDS = {
+    "Asia/Hong_Kong": "Hong Kong",
+    "America/New_York": "New York",
+}
 
 
-def build_layout(analysis, data_bundle, config=None):
+def _cutoff_date(value):
+    text = str(value or "")
+    return text[:10] if len(text) >= 10 and text[4] == "-" and text[7] == "-" else ""
+
+
+def _zone_words(name):
+    return _ZONE_WORDS.get(name or "", "the requested timezone")
+
+
+def build_layout(analysis, data_bundle, config=None, request=None):
     config = config or {}
+    request = request or {}
     findings = analysis.get("findings", [])
     sections, paragraphs, claim_locations = [], {}, {}
+    extra_claims = []
 
     def add_section(heading, items):
         sid = f"S{len(sections) + 1:02d}"
@@ -43,36 +67,105 @@ def build_layout(analysis, data_bundle, config=None):
         return names
 
     def is_market(finding):
+        if finding.get("claim_type") in {"scenario_assumption", "management_guidance"}:
+            return False
         return any(name.startswith("price_") for name in metric_names(finding))
 
-    def is_valuation(finding):
-        return "pe_ratio" in metric_names(finding)
+    def is_financial(finding):
+        if finding.get("claim_type") in {"scenario_assumption", "management_guidance"}:
+            return False
+        return any(name in _FINANCIAL for name in metric_names(finding))
 
-    # A 的 Reviewer 要求：报告正文每一行非标题文字都必须登记进 claim_manifest。
-    # 因此正文只放有 claim_id 的结论段落；无依据的引导句、风险/缺口说明保留在
-    # 结构化字段（risks/limitations）里，不写进 Markdown，避免语义覆盖不全。
     def claimed(items):
         return [(f["statement"], f["claim_id"]) for f in items]
 
-    add_section(HEADINGS[0], [])  # 结论摘要：标题即可，正文结论见各章节
-    add_section(HEADINGS[1], [])  # 公司概况：口径信息在 DataBundle，不重复叙述
+    def context(report_claim_id, text, metric_ids=None, evidence_ids=None):
+        mentions = []
+        for metric_id in metric_ids or []:
+            metric = by_id.get(metric_id)
+            if not metric or metric.get("value") is None or metric.get("calculation_status") != "calculated":
+                continue
+            mentions.append(_mention(
+                metric["value"], metric.get("unit"), metric.get("currency"),
+                metric_id=metric_id,
+                sign=str(metric.get("name", "")).startswith("price_return"),
+                display_unit=metric.get("display_unit")))
+        extra_claims.append({
+            "report_claim_id": report_claim_id,
+            "text": text,
+            "metric_ids": list(metric_ids or []),
+            "evidence_ids": list(evidence_ids or []),
+            "claim_type": "analyst_inference",
+            "numeric_mentions": mentions,
+        })
+        return text, None
 
-    add_section(HEADINGS[2], claimed(
-        f for f in findings if f["claim_type"] == "analyst_inference" and is_market(f)))
+    company = data_bundle.get("company") or {}
+    ticker = company.get("company_id") or request.get("ticker") or ""
+    try:
+        known = resolve_company(ticker) if ticker else {}
+    except ValueError:
+        known = {}
+    company_name = company.get("name") or known.get("name") or ticker or "The company"
+    cutoff = _cutoff_date(data_bundle.get("cutoff_at") or analysis.get("cutoff_at"))
+    zone = _zone_words(request.get("timezone"))
+    evidence_ids = [item.get("evidence_id") for item in (data_bundle.get("evidence") or []) if item.get("evidence_id")]
+    support_evidence = evidence_ids[:1]
+    calculated = [metric for metric in by_id.values()
+                  if metric.get("calculation_status") == "calculated" and metric.get("value") is not None
+                  and metric.get("name") in set(_FINANCIAL) | {"price_return_window", "pe_ratio"}]
+    bits = []
+    summary_ids = []
+    for metric in calculated:
+        shown = display_string(metric["value"], metric.get("unit"),
+                               sign=str(metric.get("name", "")).startswith("price_return"),
+                               display_unit=metric.get("display_unit"))
+        bits.append(f"{metric_label(metric['name'])} is {shown}")
+        summary_ids.append(metric["metric_id"])
+    if bits:
+        summary = (f"Summary for {company_name} at the {cutoff} cutoff: "
+                   + "; ".join(bits) + ".")
+    else:
+        summary = (f"Summary for {company_name} at the {cutoff} cutoff: no revenue, margin, "
+                   "cash-flow, price, or valuation figure was calculated.")
+    company_text = (f"This note covers {company_name}, ticker {ticker}. "
+                    f"The research cutoff date is {cutoff} in {zone}. "
+                    "Information after that cutoff is excluded.")
 
-    add_section(HEADINGS[3], claimed(
-        f for f in findings if f["claim_type"] == "reported_fact"))
+    def supported(report_claim_id, text, metric_ids=None):
+        if metric_ids:
+            return context(report_claim_id, text, metric_ids)
+        if support_evidence:
+            return context(report_claim_id, text, evidence_ids=support_evidence)
+        return context(report_claim_id, text, summary_ids[:1])
+    unchecked = []
+    for item in data_bundle.get("coverage") or []:
+        if item.get("state") in {None, "available", "not_applicable"}:
+            continue
+        source = str(item.get("source") or "a source").replace("_", " ")
+        if source not in unchecked:
+            unchecked.append(source)
+    if unchecked:
+        sources = ("Sources and data gaps: these sources were not fully checked: "
+                   + "; ".join(unchecked) + ". "
+                   "Annualized volatility is omitted because the checker cannot recompute a logarithm.")
+    else:
+        sources = ("Sources and data gaps: the market, filing, and financial-fact sources used here "
+                   "were available at the cutoff. Annualized volatility is omitted because the checker "
+                   "cannot recompute a logarithm.")
+    valuation_findings = [f for f in findings if "pe_ratio" in metric_names(f)]
 
+    add_section(HEADINGS[0], [supported("RSUM", summary, summary_ids)])
+    add_section(HEADINGS[1], [supported("RCO", company_text)])
+    add_section(HEADINGS[2], claimed(f for f in findings if is_market(f)))
+    add_section(HEADINGS[3], claimed(f for f in findings if is_financial(f)))
     add_section(HEADINGS[4], claimed(
         f for f in findings if f["claim_type"] == "management_guidance"))
-
     add_section(HEADINGS[5], claimed(
         f for f in findings if f["claim_type"] == "scenario_assumption"))
-
-    add_section(HEADINGS[6], claimed(
-        f for f in findings if f["claim_type"] == "analyst_inference" and is_valuation(f)))
-
-    add_section(HEADINGS[7], [])  # 引用/缺口：引用有 inline tag，缺口在 JSON 字段
+    add_section(HEADINGS[6], claimed(valuation_findings) or [
+        supported("RVAL", "The price-to-earnings ratio was not calculated.")])
+    add_section(HEADINGS[7], [supported("RGAP", sources)])
 
     # 兜底：任何 finding 都必须有段落位置，否则 manifest 会漏登结论
     unassigned = [f for f in findings if f["claim_id"] not in claim_locations]
@@ -84,8 +177,15 @@ def build_layout(analysis, data_bundle, config=None):
             claim_locations[f["claim_id"]] = ("S04", pid)
             target["paragraph_ids"].append(pid)
 
+    for claim in extra_claims:
+        for section in sections:
+            for pid in section["paragraph_ids"]:
+                if paragraphs[pid] == claim["text"]:
+                    claim["section"] = section["section_id"]
+                    claim["paragraph"] = int(pid.lstrip("P") or 0)
+                    claim["analysis_claim_ids"] = []
     return {"sections": sections, "paragraphs": paragraphs,
-            "claim_locations": claim_locations}
+            "claim_locations": claim_locations, "extra_claims": extra_claims}
 
 
 def render_markdown(layout, analysis, data_bundle, report_path, output_root="."):

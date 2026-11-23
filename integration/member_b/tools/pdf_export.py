@@ -65,7 +65,7 @@ def export_a4_pdf(blocks, destination, image_path=None):
         if visible:
             pdf.multi_cell(0, 7, visible)
             pdf.ln(2)
-        if image_path and _IMAGE.search(paragraph):
+        if image_path and (_IMAGE.search(paragraph) or block.get("image")):
             pdf.image(image_path, w=pdf.epw)
             pdf.ln(3)
     os.makedirs(os.path.dirname(destination), exist_ok=True)

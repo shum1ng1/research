@@ -127,7 +127,14 @@ class CourseDeliveryTests(unittest.TestCase):
             self.assertIn("Chart:", page_text)
             drawing = reader.pages[0].get_contents().get_data().decode("latin1", errors="replace")
             self.assertIn("calculated metrics", drawing)
-            self.assertIn("revenue_growth_yoy", drawing)
+            self.assertIn("revenue growth", drawing)
+            report = (Path(tmp) / payload["report_path"]).read_text(encoding="utf-8")
+            self.assertNotIn("![chart]", report)
+            for heading in ("Summary", "Company overview", "Valuation", "Sources and data gaps"):
+                self.assertIn(heading, report)
+                self.assertIn(heading, page_text)
+            self.assertIn("Microsoft Corporation", report)
+            self.assertIn("2026-11-13", report)
             chart = payload["charts"][0]
             self.assertTrue((Path(tmp) / chart["path"]).is_file())
             claim = next(item for item in payload["claim_manifest"] if item["report_claim_id"] == "RCHART")
@@ -135,6 +142,51 @@ class CourseDeliveryTests(unittest.TestCase):
             for mention in claim["numeric_mentions"]:
                 self.assertIn(mention["display_text"], claim["text"])
                 self.assertIn(mention["display_text"], Path(tmp, chart["path"]).read_text(encoding="utf-8"))
+
+    def test_currency_display_and_named_fcf_are_not_a_filing_line(self):
+        from integration.member_b.tools.formatting import display_string, display_text
+        self.assertEqual(display_string(18633000000, "currency"), "$18.6 billion")
+        self.assertEqual(display_text(18633000000, "currency"), "18.6")
+        self.assertNotIn("18633000000", display_string(18633000000, "currency"))
+        bundle = {
+            "bundle_id": "DEMO_MSFT_B001",
+            "revision": 1,
+            "cutoff_at": "2026-11-13T23:59:59+08:00",
+            "company": {"company_id": "MSFT", "name": "Microsoft Corporation", "market": "NASDAQ"},
+            "metrics": [
+                {"metric_id": "M0", "name": "revenue", "value": 100, "unit": "currency", "currency": "USD",
+                 "period_start": "2025-07-01", "period_end": "2025-09-30", "period_type": "quarter", "evidence_id": "E1"},
+                {"metric_id": "M1", "name": "revenue", "value": 110, "unit": "currency", "currency": "USD",
+                 "period_start": "2026-07-01", "period_end": "2026-09-30", "period_type": "quarter", "evidence_id": "E1"},
+                {"metric_id": "MC", "name": "operating_cash_flow", "value": 20000000000, "unit": "currency", "currency": "USD",
+                 "period_start": "2026-07-01", "period_end": "2026-09-30", "period_type": "quarter", "evidence_id": "E1"},
+                {"metric_id": "MX", "name": "capex_cash_outflow", "value": 1367000000, "unit": "currency", "currency": "USD",
+                 "period_start": "2026-07-01", "period_end": "2026-09-30", "period_type": "quarter", "evidence_id": "E1"},
+            ],
+            "evidence": [{"evidence_id": "E1", "source_id": "S1", "quote": "Revenue commentary."}],
+            "coverage": [{"category": "management_materials", "source": "management_materials", "state": "not_checked"}],
+        }
+        request = {"run_id": "money", "ticker": "MSFT", "cutoff_at": bundle["cutoff_at"],
+                   "timezone": "Asia/Hong_Kong", "language": "en"}
+        with tempfile.TemporaryDirectory() as tmp:
+            written = run_writer(request, {"output_root": tmp, "run_dir": "run", "llm": {"enabled": False}},
+                                 bundle, run_analysis(request, {"llm": {"enabled": False}}, bundle)["payload"])
+            self.assertIn(written["status"], {"success", "partial"}, written.get("errors"))
+            report = (Path(tmp) / written["payload"]["report_path"]).read_text(encoding="utf-8")
+            self.assertIn("Free cash flow is calculated", report)
+            self.assertIn("$18.6 billion", report)
+            self.assertNotIn("18633000000", report)
+            self.assertNotIn("referenced metric", report.lower())
+            self.assertNotIn("revenue growth stays", report.lower())
+            self.assertIn("Hong Kong", report)
+            self.assertIn("management materials", report)
+            fcf = next(item for item in written["payload"]["claim_manifest"]
+                       if "Free cash flow is calculated" in item["text"])
+            self.assertEqual(fcf["claim_type"], "analyst_inference")
+            mention = fcf["numeric_mentions"][0]
+            self.assertEqual(mention["display_text"], "18.6")
+            self.assertEqual(mention["display_unit"], "usd billion")
+            self.assertIn(mention["display_text"], fcf["text"])
 
 
 if __name__ == "__main__":

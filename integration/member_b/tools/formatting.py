@@ -34,37 +34,72 @@ def _scaled(value, unit, precision, sign=False):
     return ("+" if sign and d >= 0 else "") + out
 
 
+METRIC_LABELS = {
+    "revenue_growth_yoy": "revenue growth",
+    "gross_margin": "gross margin",
+    "operating_margin": "operating margin",
+    "net_margin": "net margin",
+    "free_cash_flow": "free cash flow",
+    "fcf_margin": "free-cash-flow margin",
+    "price_return_window": "price return",
+    "price_volatility_window": "annualized volatility",
+    "pe_ratio": "price-to-earnings ratio",
+}
+
+
+def metric_label(name):
+    return METRIC_LABELS.get(name, str(name or "").replace("_", " "))
+
+
+def money_scale(value, precision=1):
+    """Return (reviewer number, display unit, prose such as '$18.6 billion')."""
+    amount = Decimal(str(value))
+    sign = "-" if amount < 0 else ""
+    magnitude = abs(amount)
+    if magnitude >= Decimal("1000000000"):
+        unit, divisor, word = "usd billion", Decimal("1000000000"), "billion"
+    elif magnitude >= Decimal("1000000"):
+        unit, divisor, word = "usd million", Decimal("1000000"), "million"
+    else:
+        unit, divisor, word = "usd", Decimal(1), ""
+    scaled = (magnitude / divisor).quantize(Decimal(1).scaleb(-precision), rounding=ROUND_HALF_UP)
+    number_text = f"{sign}{scaled:.{precision}f}"
+    prose = f"{sign}${scaled:.{precision}f}" + (f" {word}" if word else "")
+    return number_text, unit, prose
+
+
+def present_number(value, unit, precision=1, sign=False, display_unit=None):
+    """Return reviewer display_text, display_unit, and the prose that contains it."""
+    if value is None:
+        return None, None, "data unavailable"
+    effective = display_unit or unit
+    if effective == "currency" or unit == "currency":
+        return money_scale(value, precision)
+    out = _scaled(value, "multiple" if effective == "multiple" else effective, precision, sign)
+    if effective == "ratio":
+        return out + "%", "%", out + "%"
+    if effective == "pct_point":
+        return out, "pp", out + " pp"
+    if effective == "multiple":
+        return out, "multiple", out
+    return out, effective, out
+
+
 def display_string(value, unit, precision=1, sign=False, unavailable="data unavailable",
                    display_unit=None):
-    """给报告正文用（中文句子里的数字）。
-
-    display_unit 用于「metric 的 unit=ratio（A 要求），但要展示成倍数」的情况：
-    如市盈率 40.4 倍，不能按 ratio ×100 显示成 4040.0%。
-    """
+    """Prose form of a calculated number. Ratios stay percentages; money uses billions or millions."""
     if value is None:
         return unavailable
-    effective = display_unit or unit
-    out = _scaled(value, effective if effective != "multiple" else "multiple",
-                  precision, sign)
-    if effective == "ratio":
-        return out + "%"
-    if effective == "pct_point":
-        return out + " pp"
-    return out
+    _number, _unit, prose = present_number(value, unit, precision, sign, display_unit)
+    return prose
 
 
 def display_text(value, unit, precision=1, sign=False, display_unit=None):
-    """给 A 的 numeric_mention.display_text 用：纯数字字符串。
-
-    A 的 reviewer 会 strip 逗号/$ 并 rstrip('%') 后按 precision 精确比对。
-    display_unit="multiple" 时不 ×100（市盈率等倍数）。
-    """
+    """Reviewer display_text: the numeric token that must appear inside the prose."""
     if value is None:
         return None
-    effective = display_unit or unit
-    out = _scaled(value, effective if effective != "multiple" else "multiple",
-                  precision, sign)
-    return out + "%" if effective == "ratio" else out
+    number_text, _unit, _prose = present_number(value, unit, precision, sign, display_unit)
+    return number_text
 
 
 def a_display_unit(unit, currency=None):

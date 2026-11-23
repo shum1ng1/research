@@ -11,17 +11,17 @@ A 硬要求的字段：
 display_text 必须逐字出现在 claim["text"] 中；text 里不能有其他未登记数字，
 所以正文段落与这里都由同一份 statement 生成。
 """
-from .formatting import a_display_unit, display_text, prefix_from_bundle, rounding_policy
+from .formatting import present_number, prefix_from_bundle, rounding_policy
 
 
 def _mention(value, unit, currency=None, metric_id=None, assumption_id=None,
              sign=False, display_unit=None):
     precision = 1
+    number_text, unit_name, _prose = present_number(
+        value, unit, precision, sign=sign, display_unit=display_unit)
     return {
-        "display_text": display_text(value, unit, precision, sign=sign,
-                                     display_unit=display_unit),
-        "display_unit": display_unit if display_unit in ("multiple", "pp", "%")
-                        else a_display_unit(unit, currency),
+        "display_text": number_text,
+        "display_unit": unit_name,
         "precision": precision,
         "metric_id": metric_id,
         "assumption_id": assumption_id,
