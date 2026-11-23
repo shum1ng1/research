@@ -277,5 +277,169 @@ class AuthorTests(unittest.TestCase):
                 complete([{"role": "user", "content": "ping"}], {"llm_provider": "deepseek", "llm_http_attempts": 1})
 
 
+class ToolLoopFixTests(unittest.TestCase):
+    def test_read_tool_success_is_logged_ok(self):
+        def complete_stub(messages, config, tools=None, json_output=False):
+            del config, tools, json_output
+            if not any(item.get("role") == "assistant" for item in messages):
+                return _tool_call("list_finding_slots", {}, "list"), {"provider": "deepseek", "model": "deepseek-flash"}
+            return _tool_call("submit_ok", {}, "submit"), {"provider": "deepseek", "model": "deepseek-flash"}
+
+        def submit(_arguments):
+            return {"accepted": True, "payload": {"ok": True}}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            trace_path = Path(tmp) / "llm_tools.jsonl"
+            with patch("integration.tool_loop.complete", side_effect=complete_stub):
+                run_tool_loop(
+                    [{"role": "user", "content": "go"}], [],
+                    {"list_finding_slots": lambda _arguments: {"slots": [{"claim_id": "C1"}], "slot_count": 1},
+                     "submit_ok": submit},
+                    {"max_tool_calls": 4, "llm_trace_path": str(trace_path)},
+                    required_submit="submit_ok", stage="analysis",
+                )
+            rows = [json.loads(line) for line in trace_path.read_text(encoding="utf-8").splitlines()]
+        listed = next(row for row in rows if row.get("name") == "list_finding_slots")
+        self.assertEqual(listed["status"], "ok")
+        self.assertIsNone(listed["error"])
+        self.assertNotEqual(listed["status"], "rejected")
+
+    def test_string_top_k_is_accepted_and_bad_top_k_is_explained(self):
+        from integration.llm_author import _top_k, author_statements
+        self.assertEqual(_top_k("3"), 3)
+        self.assertEqual(_top_k("3.0"), 3)
+        self.assertEqual(_top_k(3.0), 3)
+        self.assertIsNone(_top_k(True))
+        self.assertIsNone(_top_k("nope"))
+        seen = {}
+
+        def complete_stub(messages, config, tools=None, json_output=False):
+            del config, tools, json_output
+            tools_so_far = [item for item in messages if item.get("role") == "tool"]
+            if not any(item.get("role") == "assistant" for item in messages):
+                return _tool_call("search_evidence", {"query": "revenue", "top_k": "3"}, "s"), {
+                    "provider": "deepseek", "model": "deepseek-flash"}
+            payload = json.loads(tools_so_far[-1]["content"])
+            seen.setdefault("search", payload)
+            if "slots" not in payload:
+                return _tool_call("list_finding_slots", {}, "list"), {"provider": "deepseek", "model": "deepseek-flash"}
+            statements = []
+            for slot in payload["slots"]:
+                text = "模型写明" + "".join(slot["required_display"])
+                statements.append({"claim_id": slot["claim_id"], "statement": text})
+            return _tool_call("submit_finding_statements", {"statements": statements}, "submit"), {
+                "provider": "deepseek", "model": "deepseek-flash"}
+
+        bundle = {
+            "bundle_id": "DEMO_MSFT_B001", "revision": 1,
+            "metrics": [
+                {"metric_id": "M0", "name": "revenue", "value": 100, "unit": "currency", "currency": "USD",
+                 "period_end": "2025-09-30", "period_start": "2025-07-01", "period_type": "quarter", "evidence_id": "E1"},
+                {"metric_id": "M1", "name": "revenue", "value": 110, "unit": "currency", "currency": "USD",
+                 "period_end": "2026-09-30", "period_start": "2026-07-01", "period_type": "quarter", "evidence_id": "E1"},
+            ],
+            "evidence": [{"evidence_id": "E1", "source_id": "S1", "quote": "Revenue commentary."}],
+        }
+        with patch("integration.tool_loop.complete", side_effect=complete_stub):
+            findings = author_statements([], [], bundle, {"max_tool_calls": 6})
+        self.assertNotIn("error", seen["search"])
+        self.assertIn("matches", seen["search"])
+        self.assertEqual(findings, [])
+
+    def test_bad_top_k_is_rejected_with_a_reason(self):
+        captured = {}
+
+        def complete_stub(messages, config, tools=None, json_output=False):
+            del config, tools, json_output
+            tools_so_far = [item for item in messages if item.get("role") == "tool"]
+            if not tools_so_far:
+                return _tool_call("search_evidence", {"query": "revenue", "top_k": "nope"}, "bad"), {
+                    "provider": "deepseek", "model": "deepseek-flash"}
+            captured["result"] = json.loads(tools_so_far[-1]["content"])
+            return {"role": "assistant", "content": "stop", "tool_calls": []}, {
+                "provider": "deepseek", "model": "deepseek-flash"}
+
+        bundle = AuthorTests()._bundle()
+        with patch("integration.tool_loop.complete", side_effect=complete_stub):
+            analysis = run_analysis(
+                {"run_id": "live", "ticker": "MSFT", "cutoff_at": bundle["cutoff_at"]},
+                {"llm": {"enabled": True}, "max_tool_calls": 2}, bundle,
+            )
+        self.assertEqual(captured["result"]["error"], "INVALID_ARGUMENTS")
+        self.assertIn("top_k", captured["result"]["reason"])
+        self.assertEqual(analysis["status"], "failed")
+        self.assertEqual(analysis["payload"], {})
+
+    def test_search_only_loop_does_not_substitute_templates(self):
+        def complete_stub(messages, config, tools=None, json_output=False):
+            del messages, config, tools, json_output
+            return _tool_call("search_evidence", {"query": "revenue", "top_k": 3}, "s"), {
+                "provider": "deepseek", "model": "deepseek-flash"}
+
+        bundle = AuthorTests()._bundle()
+        with patch("integration.tool_loop.complete", side_effect=complete_stub):
+            analysis = run_analysis(
+                {"run_id": "live", "ticker": "MSFT", "cutoff_at": bundle["cutoff_at"]},
+                {"llm": {"enabled": True}, "max_tool_calls": 2}, bundle,
+            )
+        self.assertEqual(analysis["status"], "failed")
+        self.assertIn("template text was not substituted", analysis["errors"][0]["message"])
+        self.assertEqual(analysis["payload"], {})
+        self.assertNotIn("营收同比增长", json.dumps(analysis, ensure_ascii=False))
+
+    def test_large_bundle_slots_stay_bounded(self):
+        from integration.llm_author import limit_live_findings
+        derived = [{
+            "metric_id": "D1", "name": "revenue_growth_yoy", "value": 0.1, "unit": "ratio",
+            "calculation_status": "calculated",
+        }]
+        skeleton = [{
+            "claim_id": "Cgrow", "claim_type": "reported_fact", "metric_ids": ["D1"],
+            "evidence_ids": [], "statement": "营收同比增长 10.0%。",
+        }]
+        for index in range(40):
+            skeleton.append({
+                "claim_id": f"G{index}", "claim_type": "management_guidance",
+                "metric_ids": [], "evidence_ids": [f"E{index}"],
+                "statement": "管理层指引摘录",
+            })
+        chosen, note = limit_live_findings(skeleton, derived)
+        self.assertLessEqual(len(chosen), 8)
+        self.assertIn(chosen[0]["claim_id"], {"Cgrow"})
+        self.assertIn("其余", note)
+        self.assertGreater(len(skeleton) - len(chosen), 30)
+        self.assertEqual(sum(item["claim_type"] == "management_guidance" for item in chosen), 1)
+
+    def test_parallel_batch_still_runs_a_valid_submit(self):
+        calls = {"submit": 0}
+
+        def complete_stub(messages, config, tools=None, json_output=False):
+            del messages, config, tools, json_output
+            return {"role": "assistant", "content": None, "tool_calls": [
+                {"id": "list", "type": "function",
+                 "function": {"name": "list_finding_slots", "arguments": {}}},
+                {"id": "search", "type": "function",
+                 "function": {"name": "search_evidence", "arguments": {"query": "revenue", "top_k": 3.0}}},
+                {"id": "submit", "type": "function",
+                 "function": {"name": "submit_ok", "arguments": "{}"}},
+            ]}, {"provider": "deepseek", "model": "deepseek-flash"}
+
+        def submit(_arguments):
+            calls["submit"] += 1
+            return {"accepted": True, "payload": {"kept": True}}
+
+        with patch("integration.tool_loop.complete", side_effect=complete_stub):
+            payload = run_tool_loop(
+                [{"role": "user", "content": "go"}], [],
+                {"list_finding_slots": lambda _arguments: {"slots": [{"claim_id": "C1"}]},
+                 "search_evidence": lambda arguments: {"matches": [], "top_k": arguments["top_k"]},
+                 "submit_ok": submit},
+                {"max_tool_calls": 2},
+                required_submit="submit_ok", stage="analysis",
+            )
+        self.assertEqual(payload, {"kept": True})
+        self.assertEqual(calls["submit"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

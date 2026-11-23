@@ -191,6 +191,8 @@ def run(request, config, data_bundle, feedback=None):
                              errors=[{"code": "LLM_ERROR", "message": str(exc), "retryable": False}],
                              config=config)
         warnings.append("分析句子由模型按工具结果改写；数字仍只来自 Python 计算，失败时不会退回模板句。")
+        if getattr(author_statements, "limit_note", ""):
+            warnings.append(author_statements.limit_note)
     else:
         findings, llm_warnings = _polish_with_llm(findings, config)
         warnings.extend(llm_warnings)

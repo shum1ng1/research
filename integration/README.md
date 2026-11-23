@@ -48,6 +48,7 @@ python3 -m integration --ticker MSFT --as-of 2026-11-13 --timezone Asia/Hong_Kon
 - 请求会关闭思考模式，并且只发送我们列出的函数。不会挂上 `deepseek_web_search` 或 `deepseek_read_url`。
 - 港大网关仍可用：`--live --provider hku`，读取 `HKU_GENAI_API_KEY`。那个地址是 `https://api.hku.hk/foundry/student`，不是 DeepSeek 官方 API。
 - 没有密钥、HTTP 失败、模型返回坏 JSON、调用了未登记工具、或超过工具次数，阶段状态都是 `failed`。程序不会改回模板句，也不会偷偷换成合成数据。
+- 实况分析只会把少量已计算结论交给模型（大约不超过 8 条），不会把几百条重复摘录都要求一次写完。读取工具成功时日志记为 `ok`，只有真正的参数或提交错误才记为 `rejected`。
 - 数字仍由 Python 计算。模型只能把已经算好的展示串原样写进句子，并引用数据包里已有的 evidence id。
 - 实况成功时，`logs/llm_tools.jsonl` 会记下分析与写作的工具名和接受或拒绝。这是“确实发生过工具调用”的记录。`summary.json` 的 `llm_transport` 为 `deepseek_official`。
 - Seeking Alpha 没有可用的自动检索。没有你自己准备的本地 manifest 时，覆盖状态是 `not_checked`。电话会逐字稿也一样，只导入你放进 manifest 的文件。不能把当前实现说成课程材料已经齐。
