@@ -36,9 +36,9 @@ def run_pack(output_root, *, offline=True, provider="deepseek"):
         )
     else:
         notice.write_text(
-            "# 本机实况稿\n\n"
-            "只有在 DEEPSEEK_API_KEY 与 SEC_USER_AGENT 已填、并且网络取数成功时，这里才是候选正式稿。\n"
-            "请自己核对 PDF 页数、引用和数字。电话会与 Seeking Alpha 仍取决于 imports/{公司}/ 里的本地文件。\n",
+            "# Live reports\n\n"
+            "These folders are candidates for the course submission only after DEEPSEEK_API_KEY and SEC_USER_AGENT were set and the network calls succeeded.\n"
+            "Check the PDF page count, citations, and figures yourself. Transcripts and Seeking Alpha still depend on local files under imports/{TICKER}/.\n",
             encoding="utf-8",
         )
     return results

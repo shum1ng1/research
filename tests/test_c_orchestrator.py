@@ -386,15 +386,17 @@ class OrchestratorTests(unittest.TestCase):
         requirements = (root / "requirements.txt").read_text(encoding="utf-8")
         self.assertIn("exchange-calendars", requirements)
         launch = json.loads((root / ".vscode" / "launch.json").read_text(encoding="utf-8"))
-        modules = [item["module"] for item in launch["configurations"]]
-        self.assertIn("integration", modules)
         names = [item["name"] for item in launch["configurations"]]
-        self.assertIn("Integration: offline MSFT", names)
-        self.assertIn("Integration: live DeepSeek MSFT", names)
-        self.assertTrue(all(item["cwd"] == "${workspaceFolder}" for item in launch["configurations"]))
+        self.assertEqual(names, ["Integration: live DeepSeek MSFT CSCO AAPL"])
+        live = launch["configurations"][0]
+        self.assertEqual(live["module"], "integration.pack")
+        self.assertEqual(live["cwd"], "${workspaceFolder}")
+        self.assertIn("--live", live["args"])
+        self.assertNotIn("--offline", live["args"])
         script = (root / "Run-Integration.command").read_text(encoding="utf-8")
         self.assertIn('cd "$(dirname "$0")"', script)
-        self.assertIn("python -m integration", script)
+        self.assertIn("python -m integration.pack --live --provider deepseek", script)
+        self.assertNotIn("--offline", script)
         self.assertNotIn("sk-", script)
 
     def test_legacy_pipeline_entry_is_unchanged(self):

@@ -18,10 +18,9 @@ cp .env.example .env
    - `DEEPSEEK_API_KEY`：你在 DeepSeek 官网申请的密钥
    - `SEC_USER_AGENT`：项目名加你的真实联系邮箱，例如 `elec7082-research you@example.com`。SEC 要求请求带这个说明，它不是密钥，但仍然不要提交。
 
-3. 选一种启动方式。默认都是 MSFT、`2026-11-13`、`Asia/Hong_Kong`。
+3. 双击 `Run-Integration.command`。它只做一件事：用官方 DeepSeek 依次生成 **MSFT、CSCO、AAPL** 三份英文报告。研究日是 `2026-11-13`，时区是 `Asia/Hong_Kong`。`.env` 里的密钥或 `SEC_USER_AGENT` 还是空的时候，它会停下来，不会先跑离线演示。
 
-- **VS Code / Cursor：** 打开“运行和调试”。`Integration: offline MSFT` 和 `Integration: live DeepSeek MSFT` 仍在。另外有 `Integration: offline AAPL` 和 `Integration: offline course pack`。它们都以模块方式从仓库根目录启动，不会去“运行当前文件”。第一次运行会先执行 `prepare-integration`：没有 `.env` 就从示例复制，然后安装 `requirements.txt`。
-- **Finder 双击：** 双击 `Run-Integration.command`。回车是离线 MSFT，2 是实况 MSFT，3 是离线 AAPL，4 是三家离线演示包。
+- **VS Code / Cursor：** 打开“运行和调试”，选 `Integration: live DeepSeek MSFT CSCO AAPL`。它从仓库根目录启动，第一次会先执行 `prepare-integration`。
 
 `python3 -m integration ...` 仍然可用。程序启动时会读取仓库根目录的 `.env`，已经存在的环境变量不会被覆盖。
 
