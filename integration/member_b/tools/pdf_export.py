@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
+
+_IMAGE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 
 FONT_CANDIDATES = (
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -25,8 +28,12 @@ def _first_existing(paths):
     return None
 
 
-def export_a4_pdf(paragraphs, destination):
-    """Write an A4 PDF and return the page count. Raises if no usable font exists."""
+def export_a4_pdf(blocks, destination, image_path=None):
+    """Write an A4 PDF and return the page count. Raises if no usable font exists.
+
+    blocks are {"heading": text} or {"text": paragraph}. A markdown image in a
+    paragraph is drawn from image_path instead of being printed as a link.
+    """
     from fpdf import FPDF
 
     latin = _first_existing(FONT_CANDIDATES)
@@ -45,7 +52,22 @@ def export_a4_pdf(paragraphs, destination):
     else:
         pdf.add_font("Body", "", cjk)
         pdf.set_font("Body", size=11)
-    pdf.multi_cell(0, 7, "\n\n".join(paragraphs))
+    for block in blocks:
+        heading = block.get("heading")
+        if heading:
+            pdf.set_font_size(14)
+            pdf.multi_cell(0, 8, heading)
+            pdf.set_font_size(11)
+            pdf.ln(1)
+            continue
+        paragraph = block.get("text") or ""
+        visible = _IMAGE.sub("", paragraph).strip()
+        if visible:
+            pdf.multi_cell(0, 7, visible)
+            pdf.ln(2)
+        if image_path and _IMAGE.search(paragraph):
+            pdf.image(image_path, w=pdf.epw)
+            pdf.ln(3)
     os.makedirs(os.path.dirname(destination), exist_ok=True)
     pdf.output(destination)
     return len(pdf.pages)

@@ -208,15 +208,15 @@ class AuthorTests(unittest.TestCase):
             if "slots" in payload:
                 statements = []
                 for slot in payload["slots"]:
-                    text = "模型依据摘录写明" + "".join(slot["required_display"])
+                    text = "The filing states " + "".join(slot["required_display"])
                     if not slot["required_display"]:
-                        text = "模型确认该项数据不可用且未估算"
+                        text = "This item is unavailable and no estimate was made"
                     statements.append({"claim_id": slot["claim_id"], "statement": text})
                 return _tool_call("submit_finding_statements", {"statements": statements}, "submit"), {
                     "provider": "deepseek", "model": "deepseek-flash"}
             paragraphs = [{
                 "claim_id": item["claim_id"],
-                "text": "报告段落：" + item["statement"],
+                "text": "Report paragraph: " + item["statement"],
             } for item in payload["statements"]]
             return _tool_call("submit_paragraphs", {"paragraphs": paragraphs}, "paragraphs"), {
                 "provider": "deepseek", "model": "deepseek-flash"}
@@ -235,8 +235,8 @@ class AuthorTests(unittest.TestCase):
             )
             self.assertIn(analysis["status"], {"success", "partial"}, analysis.get("errors"))
             statements = [item["statement"] for item in analysis["payload"]["findings"]]
-            self.assertTrue(any(item.startswith("模型依据摘录写明") and "10.0%" in item for item in statements))
-            self.assertFalse(any(item == "营收同比增长 10.0%。" for item in statements))
+            self.assertTrue(any(item.startswith("The filing states ") and "10.0%" in item for item in statements))
+            self.assertFalse(any(item == "Revenue grew 10.0% year over year." for item in statements))
             written = run_writer(
                 {"run_id": "live", "ticker": "MSFT", "cutoff_at": bundle["cutoff_at"]},
                 config, bundle, analysis["payload"],
@@ -244,7 +244,8 @@ class AuthorTests(unittest.TestCase):
             self.assertIn(written["status"], {"success", "partial"}, written.get("errors"))
             self.assertEqual(written["payload"]["template_id"], "equity_note_v0.1_model_paragraphs")
             report = Path(tmp, written["payload"]["report_path"]).read_text(encoding="utf-8")
-            self.assertIn("报告段落：模型依据摘录写明", report)
+            self.assertIn("Report paragraph: The filing states ", report)
+            self.assertNotRegex(report, r"[\u4e00-\u9fff]")
             trace = Path(tmp, "llm_tools.jsonl").read_text(encoding="utf-8")
             self.assertIn("submit_finding_statements", trace)
             self.assertIn("submit_paragraphs", trace)
@@ -278,6 +279,11 @@ class AuthorTests(unittest.TestCase):
 
 
 class ToolLoopFixTests(unittest.TestCase):
+    def test_chinese_statement_is_rejected(self):
+        from integration.llm_author import _check_text
+        self.assertIn("English", _check_text("营收增长 10.0%。", ["10.0%"], []))
+        self.assertEqual(_check_text("Revenue grew 10.0% year over year.", ["10.0%"], []), "")
+
     def test_read_tool_success_is_logged_ok(self):
         def complete_stub(messages, config, tools=None, json_output=False):
             del config, tools, json_output

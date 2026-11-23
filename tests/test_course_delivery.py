@@ -119,7 +119,15 @@ class CourseDeliveryTests(unittest.TestCase):
             pdf = Path(tmp) / payload["pdf_path"]
             self.assertTrue(pdf.is_file())
             from pypdf import PdfReader
-            self.assertEqual(len(PdfReader(str(pdf)).pages), payload["page_count"])
+            reader = PdfReader(str(pdf))
+            self.assertEqual(len(reader.pages), payload["page_count"])
+            page_text = "\n".join(page.extract_text() or "" for page in reader.pages)
+            self.assertNotIn("![chart]", page_text)
+            self.assertNotRegex(page_text, r"[\u4e00-\u9fff]")
+            self.assertIn("Chart:", page_text)
+            drawing = reader.pages[0].get_contents().get_data().decode("latin1", errors="replace")
+            self.assertIn("calculated metrics", drawing)
+            self.assertIn("revenue_growth_yoy", drawing)
             chart = payload["charts"][0]
             self.assertTrue((Path(tmp) / chart["path"]).is_file())
             claim = next(item for item in payload["claim_manifest"] if item["report_claim_id"] == "RCHART")

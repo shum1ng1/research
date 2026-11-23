@@ -351,10 +351,12 @@ class Orchestrator:
             if source.is_file():
                 destination = self.run_dir / "report.md"
                 banner = (
-                    "合成演示稿。下面的数字来自离线夹具或本次计算，不是公司真实财务，也不是投资建议。\n"
+                    "Synthetic demo. The figures below come from the offline fixture or this calculation. "
+                    "They are not the company's actual financials and they are not investment advice.\n"
                     "Reviewed draft path is the writer report_path. This copy adds this banner only.\n\n"
                     if self.offline else
-                    "草稿。页数未检查。数字未经过人工原表抽查时不能当作已核实财务。\n\n"
+                    "Draft. The writer payload records the page count. "
+                    "Do not treat the figures as checked against the original filings until a human spot check is done.\n\n"
                 )
                 destination.write_text(banner + source.read_text(encoding="utf-8"), encoding="utf-8")
                 report_rel = _rel(destination, self.output_root)

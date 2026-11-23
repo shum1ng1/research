@@ -34,7 +34,7 @@ def _scaled(value, unit, precision, sign=False):
     return ("+" if sign and d >= 0 else "") + out
 
 
-def display_string(value, unit, precision=1, sign=False, unavailable="数据不可用",
+def display_string(value, unit, precision=1, sign=False, unavailable="data unavailable",
                    display_unit=None):
     """给报告正文用（中文句子里的数字）。
 
@@ -49,7 +49,7 @@ def display_string(value, unit, precision=1, sign=False, unavailable="数据不�
     if effective == "ratio":
         return out + "%"
     if effective == "pct_point":
-        return out + " 个百分点"
+        return out + " pp"
     return out
 
 

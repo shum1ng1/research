@@ -68,7 +68,7 @@ python3 -m integration --ticker MSFT --as-of 2026-11-13 --timezone Asia/Hong_Kon
 | 文件 | 作用 |
 |---|---|
 | `summary.json` | 总结果。`final_status` 是 success / failed / manual_review。`execution_status` 是程序跑得顺不顺。`review_decision` 是审核结论 pass / revise / manual_review。这两件事分开看。 |
-| `report.md` | 给人看的草稿，开头多了一行“合成演示稿”。 |
+| `report.md` | 给人看的草稿。离线稿开头是英文 `Synthetic demo`。报告正文是英文。 |
 | `reports/MSFT_draft.md` | Writer 交给 Reviewer 的正文，没有上面那行说明。 |
 | `request.json` | 实际使用的 ticker、as_of、timezone、cutoff_at。 |
 | `config.json` | 本轮配置。`project_root` 写成 `.`，不记录本机绝对路径。 |

@@ -12,8 +12,8 @@ A 会逐行扫描报告正文：凡是未登记在 claim_manifest.text 里的数
 import os
 
 HEADINGS = [
-    "结论摘要", "公司概况", "近期经营与行情", "财务趋势与比率",
-    "管理层指引与假设", "情景与风险", "估值", "引用与数据缺口",
+    "Summary", "Company", "Market", "Financial trends",
+    "Management guidance", "Scenario and risks", "Valuation", "Sources and gaps",
 ]
 
 
@@ -34,12 +34,19 @@ def build_layout(analysis, data_bundle, config=None):
         sections.append({"section_id": sid, "heading": heading,
                          "paragraph_ids": pids})
 
-    def is_market(f):
-        return any(k in f.get("statement", "")
-                   for k in ("价格", "波动", "行情"))
+    by_id = {item.get("metric_id"): item for item in analysis.get("derived_metrics") or []}
 
-    def is_valuation(f):
-        return "市盈率" in f.get("statement", "")
+    def metric_names(finding):
+        names = []
+        for metric_id in finding.get("metric_ids") or []:
+            names.append((by_id.get(metric_id) or {}).get("name") or "")
+        return names
+
+    def is_market(finding):
+        return any(name.startswith("price_") for name in metric_names(finding))
+
+    def is_valuation(finding):
+        return "pe_ratio" in metric_names(finding)
 
     # A 的 Reviewer 要求：报告正文每一行非标题文字都必须登记进 claim_manifest。
     # 因此正文只放有 claim_id 的结论段落；无依据的引导句、风险/缺口说明保留在
@@ -82,7 +89,7 @@ def build_layout(analysis, data_bundle, config=None):
 
 
 def render_markdown(layout, analysis, data_bundle, report_path, output_root="."):
-    lines = ["# 公司研报草稿", ""]
+    lines = ["# Equity research draft", ""]
     for section in layout["sections"]:
         lines.append(f"## {section['heading']}")
         lines.append("")

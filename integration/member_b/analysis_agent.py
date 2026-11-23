@@ -50,17 +50,18 @@ def _statement_for(name, value, unit, display_unit=None):
     """正文数字与 numeric_mention 共用 display_string，逐字一致。"""
     shown = display_string(value, unit, display_unit=display_unit)
     if name == "pe_ratio":
-        return f"按最新收盘价与每股收益计算的市盈率约 {shown} 倍，不代表估值判断。"
+        return (f"The price-to-earnings ratio from the latest close and earnings per share is {shown}. "
+                "This is not a valuation opinion.")
     templates = {
-        "revenue_growth_yoy": f"营收同比增长 {shown}。",
-        "gross_margin": f"当季毛利率 {shown}。",
-        "net_margin": f"当季净利率 {shown}。",
-        "free_cash_flow": f"当期自由现金流 {shown} USD。",
-        "fcf_margin": f"自由现金流利润率 {shown}。",
-        "price_return_window": f"近期价格变动 {display_string(value, unit, sign=True)}。",
-        "price_volatility_window": f"近期年化波动率 {shown}。",
+        "revenue_growth_yoy": f"Revenue grew {shown} year over year.",
+        "gross_margin": f"Gross margin for the period is {shown}.",
+        "net_margin": f"Net margin for the period is {shown}.",
+        "free_cash_flow": f"Free cash flow for the period is {shown} USD.",
+        "fcf_margin": f"Free-cash-flow margin is {shown}.",
+        "price_return_window": f"The price change over the window is {display_string(value, unit, sign=True)}.",
+        "price_volatility_window": f"Annualized volatility over the window is {shown}.",
     }
-    return templates.get(name, f"{name} 为 {shown}。")
+    return templates.get(name, f"{name} is {shown}.")
 
 
 def _infer_claim_type(name):
@@ -84,7 +85,7 @@ def _build_findings(derived, data_bundle, prefix):
             if d["name"] in ("price_volatility_window", "price_return_window"):
                 findings.append({
                     "claim_id": f"{prefix}C{len(findings) + 1:03d}",
-                    "statement": "行情指标数据不可用（data unavailable），未做估算。",
+                    "statement": "This market metric is unavailable. No estimate was made.",
                     "claim_type": "analyst_inference",
                     "metric_ids": [d["metric_id"]],
                     "evidence_ids": [],
@@ -114,7 +115,7 @@ def _build_findings(derived, data_bundle, prefix):
             continue
         findings.append({
             "claim_id": f"{prefix}C{len(findings) + 1:03d}",
-            "statement": "管理层指引：" + (ev.get("quote") or "").replace("\n", " ").strip(),
+            "statement": "Management guidance: " + (ev.get("quote") or "").replace("\n", " ").strip(),
             "claim_type": "management_guidance",
             "metric_ids": [],
             "evidence_ids": [ev["evidence_id"]],
@@ -129,14 +130,14 @@ def _build_findings(derived, data_bundle, prefix):
     if basis is None:
         basis = next((d for d in derived if d.get("value") is not None
                       and d.get("unit") == "ratio"), None)
-    assumption_id, scenario_shown = f"{prefix}ASM001", "当前水平"
+    assumption_id, scenario_shown = f"{prefix}ASM001", "the current level"
     if basis is not None:
         scenario_shown = display_string(basis["value"], "ratio")
-        label = "毛利率" if basis["name"] == "gross_margin" else "利润率"
+        label = "gross margin" if basis["name"] == "gross_margin" else "the margin"
         findings.append({
             "claim_id": f"{prefix}C{len(findings) + 1:03d}",
-            "statement": f"情景假设：若{label}维持 {scenario_shown}，"
-                         "在该假设下利润率区间不变；此非已实现业绩。",
+            "statement": f"Scenario assumption: if {label} stays at {scenario_shown}, "
+                         "the margin range is unchanged under that assumption. This is not a reported result.",
             "claim_type": "scenario_assumption",
             "metric_ids": [basis["metric_id"]],
             "evidence_ids": [],
@@ -204,7 +205,7 @@ def run(request, config, data_bundle, feedback=None):
                   and d.get("calculation_status") != "calculated" for d in derived)
     assumptions = list(price.get("assumptions") or []) + list(val["assumptions"]) + [{
         "assumption_id": scenario_assumption_id,
-        "statement": f"毛利率维持 {scenario_shown} 水平",
+        "statement": f"Gross margin is assumed to remain at {scenario_shown}.",
         "basis": "analyst_assumption",
         "value": next((d["value"] for d in derived if d["name"] == "gross_margin"), None),
         "unit": "ratio",
@@ -225,7 +226,7 @@ def run(request, config, data_bundle, feedback=None):
             "inputs": [f["claim_id"] for f in findings
                        if f["claim_type"] == "scenario_assumption"],
             "outputs": [],
-            "risk_notes": ["情景结果不是已实现业绩"],
+            "risk_notes": ["The scenario result is not a reported result."],
         }],
         "risks": [{"risk_id": f"{prefix}RK{i + 1:03d}",
                    "statement": note, "evidence_ids": []}

@@ -46,12 +46,12 @@ def build_charts(analysis, report_dir, output_root):
             continue
         derived.append((metric, mention))
     if not derived:
-        return [], None, [], [], "图表未绘制：没有已计算的收入、利润率或价格指标。"
+        return [], None, [], [], "No chart was drawn because no calculated revenue, margin, or price metric is available."
 
     mentions = [mention for _metric, mention in derived]
     metric_ids = [metric["metric_id"] for metric, _mention in derived]
     labels = [_label(metric, mention) for metric, mention in derived]
-    caption = "图表 " + "；".join(labels) + "。见 ![chart](../charts/metrics.svg)。"
+    caption = "Chart: " + "; ".join(labels) + ". See ![chart](../charts/metrics.svg)."
     # Caption must contain every display string exactly.
     for mention in mentions:
         if mention["display_text"] not in caption:

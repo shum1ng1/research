@@ -89,9 +89,18 @@ def run(request, config, data_bundle, analysis_bundle, feedback=None):
         claims["charts"] = charts
     try:
         pdf_rel = f"{run_dir}/reports/{ticker}.pdf"
+        blocks = [{"heading": "Equity research draft"}]
+        for section in layout["sections"]:
+            blocks.append({"heading": section["heading"]})
+            for pid in section["paragraph_ids"]:
+                blocks.append({"text": layout["paragraphs"][pid]})
+        chart_file = None
+        if charts:
+            chart_file = os.path.join(output_root or ".", charts[0]["path"])
         page_count = export_a4_pdf(
-            [layout["paragraphs"][pid] for section in layout["sections"] for pid in section["paragraph_ids"]],
+            blocks,
             os.path.join(output_root or ".", pdf_rel),
+            image_path=chart_file,
         )
     except Exception as exc:
         return _envelope(run_id, "writer", "failed", {},
