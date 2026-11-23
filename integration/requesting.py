@@ -18,7 +18,7 @@ def build_request(ticker: str, as_of: str, timezone_name: str, run_id: str, lang
     try:
         resolve_company(ticker)
     except ValueError as exc:
-        raise ContractError("ticker must be MSFT or CSCO") from exc
+        raise ContractError("ticker must be MSFT, CSCO, or AAPL") from exc
     if not isinstance(as_of, str):
         raise ContractError("as_of must be YYYY-MM-DD")
     try:

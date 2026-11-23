@@ -29,17 +29,28 @@ if [[ ! -f .env ]]; then
 fi
 
 echo
-echo "1) 离线演示（默认，不需要密钥，不访问网络）"
-echo "2) 实况官方 DeepSeek（读取本机 .env）"
-echo "直接回车等于 1。公司默认 MSFT，研究日 2026-11-13，时区 Asia/Hong_Kong。"
+echo "1) 离线 MSFT（默认，不需要密钥，不访问网络）"
+echo "2) 实况官方 DeepSeek，MSFT（读取本机 .env）"
+echo "3) 离线 AAPL"
+echo "4) 离线三公司演示包 MSFT、CSCO、AAPL（不是正式稿）"
+echo "直接回车等于 1。研究日 2026-11-13，时区 Asia/Hong_Kong。"
 read -r choice
 choice="${choice:-1}"
 
-args=(--ticker MSFT --as-of 2026-11-13 --timezone Asia/Hong_Kong)
+if [[ "$choice" == "4" ]]; then
+  python -m integration.pack --offline
+  status=$?
+  pause
+  exit "$status"
+fi
+
+args=(--as-of 2026-11-13 --timezone Asia/Hong_Kong)
 if [[ "$choice" == "2" ]]; then
-  args+=(--live --provider deepseek)
+  args+=(--ticker MSFT --live --provider deepseek)
+elif [[ "$choice" == "3" ]]; then
+  args+=(--ticker AAPL --offline)
 else
-  args+=(--offline)
+  args+=(--ticker MSFT --offline)
 fi
 
 python -m integration "${args[@]}"

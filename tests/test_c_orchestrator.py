@@ -305,13 +305,16 @@ class OrchestratorTests(unittest.TestCase):
             datetime.fromisoformat(hong_kong["cutoff_at"]),
             datetime(2026, 11, 13, 23, 59, 59, tzinfo=ZoneInfo("Asia/Hong_Kong")),
         )
+        apple = build_request("AAPL", "2026-11-13", "America/New_York", "aapl")
+        self.assertEqual(apple["ticker"], "AAPL")
+        self.assertEqual(apple["cutoff_at"], "2026-11-13T23:59:59-05:00")
         with self.assertRaises(ContractError):
-            build_request("AAPL", "2026-11-13", "Asia/Hong_Kong", "nope")
+            build_request("TSLA", "2026-11-13", "Asia/Hong_Kong", "nope")
         with self.assertRaises(ContractError):
             build_request("MSFT", "13-11-2026", "Asia/Hong_Kong", "nope")
         with self.assertRaises(ContractError):
             build_request("MSFT", "2026-11-13", "Not/AZone", "nope")
-        failed = orchestrate("AAPL", "2026-11-13", "Asia/Hong_Kong", offline=True)
+        failed = orchestrate("TSLA", "2026-11-13", "Asia/Hong_Kong", offline=True)
         self.assertEqual(failed["final_status"], "failed")
         self.assertEqual(failed["errors"][0]["code"], "INVALID_REQUEST")
 
@@ -383,7 +386,10 @@ class OrchestratorTests(unittest.TestCase):
         self.assertIn("exchange-calendars", requirements)
         launch = json.loads((root / ".vscode" / "launch.json").read_text(encoding="utf-8"))
         modules = [item["module"] for item in launch["configurations"]]
-        self.assertEqual(modules, ["integration", "integration"])
+        self.assertIn("integration", modules)
+        names = [item["name"] for item in launch["configurations"]]
+        self.assertIn("Integration: offline MSFT", names)
+        self.assertIn("Integration: live DeepSeek MSFT", names)
         self.assertTrue(all(item["cwd"] == "${workspaceFolder}" for item in launch["configurations"]))
         script = (root / "Run-Integration.command").read_text(encoding="utf-8")
         self.assertIn('cd "$(dirname "$0")"', script)

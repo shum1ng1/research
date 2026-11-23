@@ -21,6 +21,7 @@ from integration.member_a.schemas.member_a import (
     validate_envelope,
 )
 from integration.member_a.tools.member_a_review import validate_review_result
+from integration.local_materials import discover_local_manifests
 from integration.offline import NOTICE, patched_data, patched_review, prepare_fixture
 from integration.requesting import build_request, make_run_id
 
@@ -121,6 +122,7 @@ class Orchestrator:
             "allow_manual_import": True,
             "require_final_pdf": False,
             "offline": self.offline,
+            **discover_local_manifests(self.output_root, self.request["ticker"]),
         }
         if self.offline:
             config["llm"] = {"enabled": False, "mode": "synthetic_templates", "provider": None}

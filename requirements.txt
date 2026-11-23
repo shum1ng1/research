@@ -5,3 +5,6 @@ pandas>=2.0.0
 # Live Yahoo bars in integration/member_a/tools/yahoo_tools.py import this
 # inside fetch_market_prices. The offline demo does not import it.
 exchange-calendars>=4.5.0
+# Writer A4 export, and Reviewer page-count check.
+fpdf2>=2.7.9
+pypdf>=5.0.0

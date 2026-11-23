@@ -24,7 +24,7 @@ def _function(name, properties, required, description):
                            "required": required, "additionalProperties": False}}}
 
 
-COMPANY_ARG = {"type": "string", "enum": ["MSFT", "CSCO"]}
+COMPANY_ARG = {"type": "string", "enum": ["MSFT", "CSCO", "AAPL"]}
 TIME_ARG = {"type": "string", "format": "date-time"}
 TOOLS = [
     _function("resolve_company", {"ticker": COMPANY_ARG}, ["ticker"], "Resolve registered company"),
@@ -169,7 +169,7 @@ def _collect_deterministic(session):
     base = dict(company_id=req["ticker"], cutoff_at=req["cutoff_at"])
     tasks = [("resolve_company", {"ticker": req["ticker"]}),
              ("fetch_market_prices", dict(base, start_date=_start_date(req, cfg))),
-             ("list_regulatory_documents", dict(base, document_types=["10-K", "10-Q", "10-K/A", "10-Q/A"]))]
+             ("list_regulatory_documents", dict(base, document_types=["10-K", "10-Q", "10-K/A", "10-Q/A", "8-K"]))]
     for name, args in tasks:
         session.execute(name, args)
     if session.documents:

@@ -228,7 +228,7 @@ def data_model(request, config, accns):
         [
             _call("resolve_company", {"ticker": request["ticker"]}, "c1"),
             _call("fetch_market_prices", dict(base, start_date="2000-01-01"), "c2"),
-            _call("list_regulatory_documents", dict(base, document_types=["10-K", "10-Q"]), "c3"),
+            _call("list_regulatory_documents", dict(base, document_types=["10-K", "10-Q", "8-K"]), "c3"),
             _call("load_management_materials", dict(base, manifest_path=config["management_manifest_path"]), "c4"),
             _call("load_seekingalpha_materials", dict(base, manifest_path=config["seekingalpha_manifest_path"]), "c5"),
         ],

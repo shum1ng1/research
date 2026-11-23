@@ -48,8 +48,8 @@ def validate_request(request):
         raise ContractError("schema_version must be 0.1")
     if not isinstance(request["run_id"], str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", request["run_id"]):
         raise ContractError("run_id must be a safe identifier")
-    if request["ticker"] not in {"MSFT", "CSCO"}:
-        raise ContractError("ticker must be MSFT or CSCO")
+    if request["ticker"] not in {"MSFT", "CSCO", "AAPL"}:
+        raise ContractError("ticker must be MSFT, CSCO, or AAPL")
     try:
         day = date.fromisoformat(request["as_of"])
         local = ZoneInfo(request["timezone"])

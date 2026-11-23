@@ -40,6 +40,36 @@
       "envFile": "${workspaceFolder}/.env",
       "console": "integratedTerminal",
       "preLaunchTask": "prepare-integration"
+    },
+    {
+      "name": "Integration: offline AAPL",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "integration",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "--ticker",
+        "AAPL",
+        "--as-of",
+        "2026-11-13",
+        "--timezone",
+        "Asia/Hong_Kong",
+        "--offline"
+      ],
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "preLaunchTask": "prepare-integration"
+    },
+    {
+      "name": "Integration: offline course pack",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "integration.pack",
+      "cwd": "${workspaceFolder}",
+      "args": ["--offline"],
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "preLaunchTask": "prepare-integration"
     }
   ]
 }

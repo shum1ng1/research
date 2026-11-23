@@ -288,6 +288,17 @@ def original_table_spotchecks(bundle, store, config):
     return []
 
 
+def judge_page_count(actual_pages, declared):
+    """not_checked when no PDF was read. failed when the count is over 10 or disagrees."""
+    if actual_pages is None:
+        return "not_checked"
+    if isinstance(declared, bool) or not isinstance(declared, int):
+        return "failed"
+    if actual_pages > 10 or declared != actual_pages:
+        return "failed"
+    return "passed"
+
+
 def inspect_artifacts(request, bundle, analysis, report, store, config):
     issues, manual = [], []
     manual.extend(original_table_spotchecks(bundle, store, config))
@@ -487,7 +498,7 @@ def inspect_artifacts(request, bundle, analysis, report, store, config):
         try:
             from pypdf import PdfReader
             pages = len(PdfReader(store.resolve(pdf_path)).pages)
-            checks["final_page_count"] = "passed" if pages <= 10 and report.get("page_count") == pages else "failed"
+            checks["final_page_count"] = judge_page_count(pages, report.get("page_count"))
             if checks["final_page_count"] == "failed":
                 issues.append(issue("FINAL_PAGE_COUNT", "Actual PDF page count exceeds 10 or differs from declared count", "writer"))
         except (ImportError, OSError, ValueError):

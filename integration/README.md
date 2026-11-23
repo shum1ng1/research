@@ -2,7 +2,7 @@
 
 这条命令把四段接在一起：成员 A 的 Data、成员 B 的 Analysis、成员 B 的 Writer、成员 A 的 Reviewer。旧的 `python3 -m pipeline` 没有被替换。
 
-只支持 **MSFT** 和 **CSCO**。其它代码会被拒绝。
+支持 **MSFT**、**CSCO** 和课程示例 **AAPL**。其它代码会被拒绝。
 
 ## Mac 上一键运行
 
@@ -20,8 +20,8 @@ cp .env.example .env
 
 3. 选一种启动方式。默认都是 MSFT、`2026-11-13`、`Asia/Hong_Kong`。
 
-- **VS Code / Cursor：** 打开“运行和调试”，选择 `Integration: offline MSFT` 或 `Integration: live DeepSeek MSFT`，点运行。配置在 `.vscode/launch.json`，以模块 `integration` 从仓库根目录启动，不会去“运行当前文件”。第一次运行会先执行任务 `prepare-integration`：如果没有 `.env` 就从示例复制一份，然后 `pip install -r requirements.txt`。
-- **Finder 双击：** 双击仓库根目录的 `Run-Integration.command`。终端会创建 `.venv`、安装依赖，并问你要离线还是实况。直接回车是离线。
+- **VS Code / Cursor：** 打开“运行和调试”。`Integration: offline MSFT` 和 `Integration: live DeepSeek MSFT` 仍在。另外有 `Integration: offline AAPL` 和 `Integration: offline course pack`。它们都以模块方式从仓库根目录启动，不会去“运行当前文件”。第一次运行会先执行 `prepare-integration`：没有 `.env` 就从示例复制，然后安装 `requirements.txt`。
+- **Finder 双击：** 双击 `Run-Integration.command`。回车是离线 MSFT，2 是实况 MSFT，3 是离线 AAPL，4 是三家离线演示包。
 
 `python3 -m integration ...` 仍然可用。程序启动时会读取仓库根目录的 `.env`，已经存在的环境变量不会被覆盖。
 
@@ -103,12 +103,28 @@ python3 -m integration --ticker MSFT --as-of 2026-11-13 --timezone Asia/Hong_Kon
 
 真实 Yahoo 历史价即使以后接上，也不是“当时看到的档案”，供应商以后仍可能修订旧 K 线。
 
-人工原表抽查和 PDF 页数没有做。离线配置把抽查数量设为 0，并在限制里写明。
+人工对照原表的抽查仍然没有做。PDF 页数会在导出后自动核对，超过 10 页会失败。离线配置把人工抽查数量设为 0，并在限制里写明。
+
+## 图表、10 页 PDF、三家公司演示包
+
+成功写出的报告会带 SVG 图表（有已计算指标时）和 A4 PDF。`pdf_path` 与 `page_count` 是真实值。超过 10 页会失败。没有可画的指标时不画图，并在警告里说明。
+
+电话会和 Seeking Alpha 只读 `imports/{公司}/` 里你自己放的文件，说明见 `imports/README.md`。没有文件就是 `not_checked`，不会编造。SEC 若返回 8-K，会标成 SEC 文件，不会冒充电话会。
+
+离线三家演示（合成数据，不是正式交卷）：
+
+```bash
+python3 -m integration.pack --offline
+```
+
+结果在 `course_pack/offline_demo/`，目录里的 README 会再次标明这不是正式稿。正式稿要在本机填好 `.env` 后执行 `python3 -m integration.pack --live`。
+
+10 分钟方法录像请照 `course_pack/METHODOLOGY_RECORDING_SCRIPT.md` 自己录。脚本讲框架和模型如何使用已取到的数据，不讲投资结论，也不出现密钥。录像文件不会由这个仓库生成。
 
 ## 测试
 
 ```bash
-python3 -m unittest tests.test_c_orchestrator -v
+python3 -m unittest tests.test_c_orchestrator tests.test_live_llm_tools tests.test_course_delivery -v
 ```
 
-测试只跑合成夹具和脚本化审核，不安装额外依赖，不访问网络。
+测试不访问 Yahoo、SEC 或 DeepSeek，也不读取真实密钥。
