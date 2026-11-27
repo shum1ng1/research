@@ -5,6 +5,9 @@ __pycache__/
 venv/
 reports/*.md
 !reports/.gitkeep
+runs/
+course_pack/offline_demo/
+course_pack/live/
 .DS_Store
 *.egg-info/
 dist/

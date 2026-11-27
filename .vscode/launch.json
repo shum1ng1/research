@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Integration: live DeepSeek MSFT CSCO AAPL",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "integration.pack",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "--live",
+        "--provider",
+        "deepseek"
+      ],
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "preLaunchTask": "prepare-integration"
+    }
+  ]
+}
