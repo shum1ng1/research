@@ -11,6 +11,8 @@
 - calculation_status 用 calculated / unavailable / not_applicable；
 - 指标名兼容 A 的字段：capex_cash_outflow、net_income_attributable_to_parent。
 """
+from integration.reporting_periods import comparable_prior_year
+
 from .formatting import q, prefix_from_bundle, rounding_policy
 
 NAME_ALIASES = {
@@ -85,25 +87,25 @@ def compute_financial_metrics(data_bundle, config=None):
     revenue = _by_name(metrics, "revenue")
     latest_rev = revenue[-1] if revenue else None
 
-    # 1) 营收同比：公式用 metric_id 变量名
-    if len(revenue) >= 2:
-        cur, prev = revenue[-1], revenue[-2]
+    # 1) Compare the same reporting period last year, never the adjacent row.
+    previous = next((m for m in reversed(revenue[:-1]) if comparable_prior_year(latest_rev, m)), None)
+    if previous and previous["value"]:
+        cur, prev = latest_rev, previous
         c, p = cur["metric_id"], prev["metric_id"]
-        denominator = abs(prev["value"])
-        value = (cur["value"] - prev["value"]) / denominator if denominator else None
+        value = (cur["value"] - prev["value"]) / abs(prev["value"])
         add("revenue_growth_yoy", value, _period_of(cur), "revenue_growth_yoy",
             f"({c} - {p}) / abs({p})", [c, p])
     else:
         add("revenue_growth_yoy", None, EMPTY_PERIOD, "revenue_growth_yoy",
             "", [], status="unavailable",
-            note="营收增长缺少至少两期营收数据，未计算")
+            note="Comparable prior-year revenue is missing or zero. Year-over-year growth was omitted.")
 
     # 2) 毛利率 / 净利率：分子分母必须同期间
     for name, input_name in (("gross_margin", "gross_profit"),
                              ("net_margin", "net_income")):
         candidates = _by_name(metrics, input_name)
         same = [m for m in candidates
-                if latest_rev and m.get("period_end") == latest_rev.get("period_end")]
+                if latest_rev and _period_of(m) == _period_of(latest_rev)]
         if latest_rev and same and latest_rev["value"]:
             numerator, denominator = same[-1], latest_rev
             add(name, numerator["value"] / denominator["value"],
@@ -118,7 +120,7 @@ def compute_financial_metrics(data_bundle, config=None):
     ocf = _by_name(metrics, "operating_cash_flow")
     capex = _by_name(metrics, "capital_expenditure")
     fcf_value = None
-    if ocf and capex and ocf[-1].get("period_end") == capex[-1].get("period_end"):
+    if ocf and capex and _period_of(ocf[-1]) == _period_of(capex[-1]):
         o, x = ocf[-1], capex[-1]
         fcf_value = o["value"] - x["value"]
         add("free_cash_flow", fcf_value, _period_of(o), "free_cash_flow",
@@ -129,7 +131,8 @@ def compute_financial_metrics(data_bundle, config=None):
             unit="currency", status="unavailable",
             note="自由现金流缺少同期间的经营现金流与资本开支，未计算")
 
-    if fcf_value is not None and latest_rev and latest_rev["value"]:
+    if (fcf_value is not None and latest_rev and latest_rev["value"]
+            and _period_of(ocf[-1]) == _period_of(latest_rev)):
         o, x, r = ocf[-1], capex[-1], latest_rev
         add("fcf_margin", fcf_value / r["value"], _period_of(r), "fcf_margin",
             f"({o['metric_id']} - {x['metric_id']}) / {r['metric_id']}",

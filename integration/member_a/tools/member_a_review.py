@@ -46,6 +46,7 @@ def _semantic_review(bundle, analysis, report, config, store, numeric_result):
         raise agent_llm.LLMError("Empty claim_manifest cannot receive a full semantic pass")
     context = json.dumps(dict(claims=claims, assumptions=analysis["assumptions"],
                               scenarios=analysis["scenarios"], findings=analysis["findings"],
+                              source_coverage=bundle.get("coverage", []),
                               cutoff_at=bundle["cutoff_at"]), ensure_ascii=False)
     if len(context) > config.get("max_review_context_chars", 120000):
         raise agent_llm.LLMError("Review context exceeds budget; split the report into smaller auditable claims")

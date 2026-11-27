@@ -1,73 +1,151 @@
-"""A4 PDF export. Page count is the number of pages actually written."""
-from __future__ import annotations
-
-import os
-import re
+"""A4 report rendering. The line chart and its labels are native PDF content."""
 from pathlib import Path
-
-_IMAGE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 
 FONT_CANDIDATES = (
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/Library/Fonts/Arial.ttf",
     "/System/Library/Fonts/Supplemental/Arial.ttf",
 )
-CJK_CANDIDATES = (
-    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-    "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
-    "/System/Library/Fonts/PingFang.ttc",
-    "/System/Library/Fonts/STHeiti Light.ttc",
-    "/Library/Fonts/Arial Unicode.ttf",
+BOLD_CANDIDATES = (
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/Library/Fonts/Arial Bold.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
 )
+
+_NAVY = (19, 40, 57)
+_INK = (39, 54, 69)
+_MUTED = (80, 101, 117)
+_ACCENT = (23, 103, 128)
+_GRID = (218, 229, 237)
+_TINT = (239, 245, 249)
 
 
 def _first_existing(paths):
-    for path in paths:
-        if Path(path).is_file():
-            return path
-    return None
+    return next((path for path in paths if Path(path).is_file()), None)
 
 
-def export_a4_pdf(blocks, destination, image_path=None):
-    """Write an A4 PDF and return the page count. Raises if no usable font exists.
+def _table(pdf, rows):
+    from fpdf.fonts import FontFace
 
-    blocks are {"heading": text} or {"text": paragraph}. A markdown image in a
-    paragraph is drawn from image_path instead of being printed as a link.
-    """
+    pdf.set_font("Body", size=9)
+    with pdf.table(
+        width=pdf.epw, col_widths=(32, 21, 47), line_height=5.2, padding=(1.2, 2.8),
+        text_align=("LEFT", "LEFT", "LEFT"), borders_layout="HORIZONTAL_LINES",
+        headings_style=FontFace(emphasis="BOLD", color=_NAVY, fill_color=_GRID),
+        cell_fill_color=_TINT, cell_fill_mode="ROWS",
+    ) as table:
+        table.row(("Metric", "Value", "Period or basis"))
+        for row in rows:
+            table.row(row)
+    pdf.ln(4)
+
+
+def _price_chart(pdf, chart):
+    x0, y0 = pdf.l_margin, pdf.get_y()
+    x1, x2 = x0 + 20, x0 + pdf.epw - 5
+    top, bottom = y0 + 12, y0 + 49
+    pdf.set_fill_color(*_TINT)
+    pdf.rect(x0, y0, pdf.epw, 59, style="F")
+    pdf.set_font("Body", "B", 9)
+    pdf.set_text_color(*_NAVY)
+    pdf.set_xy(x1, y0 + 2)
+    pdf.cell(x2 - x1, 6, chart["title"])
+    pdf.set_font("Body", size=8)
+    pdf.set_text_color(*_MUTED)
+    pdf.set_draw_color(*_GRID)
+    pdf.set_line_width(0.2)
+    for fraction, value in chart["ticks"]:
+        y = bottom - fraction * (bottom - top)
+        pdf.line(x1, y, x2, y)
+        pdf.set_xy(x0 + 1, y - 2.5)
+        pdf.cell(x1 - x0 - 2, 5, f"{value:,.2f}", align="R")
+    pdf.set_draw_color(*_ACCENT)
+    pdf.set_line_width(0.45)
+    pdf.polyline([(x1 + x * (x2 - x1), bottom - y * (bottom - top)) for x, y in chart["points"]])
+    for label, align in ((chart["start"], "L"), (chart["end"], "R")):
+        pdf.set_xy(x1, bottom + 2)
+        pdf.cell(x2 - x1, 5, label, align=align)
+    pdf.set_xy(x0, y0 + 61)
+
+
+def export_a4_pdf(layout, destination):
+    """Write an A4 draft and return the actual page count."""
     from fpdf import FPDF
 
-    latin = _first_existing(FONT_CANDIDATES)
-    cjk = _first_existing(CJK_CANDIDATES)
-    if not latin and not cjk:
-        raise RuntimeError("No local font found for A4 PDF. Install DejaVu or a CJK font.")
-    pdf = FPDF(format="A4")
-    pdf.set_auto_page_break(auto=True, margin=18)
+    class ResearchPDF(FPDF):
+        def footer(self):
+            self.set_y(-13)
+            self.set_draw_color(*_GRID)
+            self.set_line_width(0.2)
+            self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
+            self.set_font("Body", size=8)
+            self.set_text_color(*_MUTED)
+            self.cell(self.epw * 0.8, 8, layout["title"])
+            self.cell(self.epw * 0.2, 8, str(self.page_no()), align="R")
+
+    regular, bold = _first_existing(FONT_CANDIDATES), _first_existing(BOLD_CANDIDATES)
+    if not regular:
+        raise RuntimeError("Install Arial or DejaVu Sans to export the A4 report.")
+    pdf = ResearchPDF(format="A4")
+    pdf.set_margins(17, 16, 17)
+    pdf.set_auto_page_break(auto=True, margin=19)
+    pdf.add_font("Body", "", regular)
+    pdf.add_font("Body", "B", bold or regular)
+    pdf.set_title(f"{layout['title']} | Equity research draft")
     pdf.add_page()
-    if latin:
-        pdf.add_font("Body", "", latin)
-        pdf.set_font("Body", size=11)
-        if cjk:
-            pdf.add_font("CJK", "", cjk)
-            pdf.set_fallback_fonts(["CJK"])
-    else:
-        pdf.add_font("Body", "", cjk)
-        pdf.set_font("Body", size=11)
-    for block in blocks:
-        heading = block.get("heading")
-        if heading:
-            pdf.set_font_size(14)
-            pdf.multi_cell(0, 8, heading)
-            pdf.set_font_size(11)
-            pdf.ln(1)
-            continue
-        paragraph = block.get("text") or ""
-        visible = _IMAGE.sub("", paragraph).strip()
-        if visible:
-            pdf.multi_cell(0, 7, visible)
-            pdf.ln(2)
-        if image_path and (_IMAGE.search(paragraph) or block.get("image")):
-            pdf.image(image_path, w=pdf.epw)
-            pdf.ln(3)
-    os.makedirs(os.path.dirname(destination), exist_ok=True)
-    pdf.output(destination)
+
+    pdf.set_text_color(*_ACCENT)
+    pdf.set_font("Body", "B", 9)
+    pdf.cell(0, 5, "EQUITY RESEARCH DRAFT", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(*_NAVY)
+    pdf.set_font("Body", "B", 25)
+    pdf.multi_cell(0, 11, layout["title"], new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(*_MUTED)
+    pdf.set_font("Body", size=9.5)
+    pdf.multi_cell(0, 6, layout["subtitle"], new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(3)
+
+    def body(text, color=_INK, size=10):
+        pdf.set_text_color(*color)
+        pdf.set_font("Body", size=size)
+        pdf.multi_cell(0, 5.4, text, align="L", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(2)
+
+    for section in layout["sections"]:
+        minimum = 75 if section["heading"] == "Financial trends" else 21
+        if pdf.will_page_break(minimum):
+            pdf.add_page()
+        pdf.set_text_color(*_NAVY)
+        pdf.set_font("Body", "B", 13)
+        pdf.multi_cell(0, 7, section["heading"], new_x="LMARGIN", new_y="NEXT")
+        for pid in section["paragraph_ids"]:
+            block = layout["blocks"][pid]
+            if block["kind"] == "table":
+                pdf.set_text_color(*_INK)
+                pdf.set_draw_color(*_GRID)
+                pdf.set_line_width(0.2)
+                _table(pdf, block["rows"])
+            elif block["kind"] == "chart":
+                if pdf.will_page_break(69):
+                    pdf.add_page()
+                _price_chart(pdf, block["chart"])
+                body(layout["paragraphs"][pid], _MUTED, 8.5)
+            else:
+                body(layout["paragraphs"][pid])
+        pdf.ln(2)
+
+    if layout["references"]:
+        if pdf.will_page_break(15):
+            pdf.add_page()
+        pdf.set_text_color(*_NAVY)
+        pdf.set_font("Body", "B", 10)
+        pdf.cell(0, 6, "Referenced documents", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(*_ACCENT)
+        pdf.set_font("Body", size=9)
+        for label, url in layout["references"]:
+            pdf.multi_cell(0, 5, label, link=url, new_x="LMARGIN", new_y="NEXT")
+
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    pdf.output(str(destination))
     return len(pdf.pages)

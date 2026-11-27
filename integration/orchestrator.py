@@ -89,7 +89,7 @@ def final_status(execution: str, decision: str | None) -> str:
 
 class Orchestrator:
     def __init__(self, ticker, as_of, timezone_name, *, offline, output_root, run_id, language, runners,
-                 provider):
+                 provider, report_dir=None):
         if provider not in {"deepseek", "hku"}:
             raise ContractError("provider must be deepseek or hku")
         self.offline = offline
@@ -97,6 +97,7 @@ class Orchestrator:
         self.output_root = Path(output_root).resolve()
         self.run_id = run_id or make_run_id(ticker, as_of, timezone_name)
         self.run_dir = self.output_root / "runs" / self.run_id
+        self.report_dir = report_dir
         self.log_path = self.run_dir / "logs" / "orchestrator.jsonl"
         self.runners = runners
         self.request = build_request(ticker, as_of, timezone_name, self.run_id, language)
@@ -124,6 +125,8 @@ class Orchestrator:
             "offline": self.offline,
             **discover_local_manifests(self.output_root, self.request["ticker"]),
         }
+        if self.report_dir is not None:
+            config["report_dir"] = self.report_dir
         if self.offline:
             config["llm"] = {"enabled": False, "mode": "synthetic_templates", "provider": None}
             config["llm_provider"] = None
@@ -395,12 +398,12 @@ class Orchestrator:
 
 def orchestrate(ticker: str, as_of: str, timezone_name: str, *, offline: bool = False,
                 output_root: str = ".", run_id: str | None = None, language: str = "zh-CN",
-                runners=None, provider: str = "deepseek") -> dict:
+                runners=None, provider: str = "deepseek", report_dir: str | None = None) -> dict:
     """Run the four-stage contract. Raises ContractError only for bad CLI inputs before a run directory exists."""
     try:
         worker = Orchestrator(
             ticker, as_of, timezone_name, offline=offline, output_root=output_root,
-            run_id=run_id, language=language, runners=runners, provider=provider,
+            run_id=run_id, language=language, runners=runners, provider=provider, report_dir=report_dir,
         )
     except ContractError as exc:
         return {

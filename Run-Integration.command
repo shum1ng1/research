@@ -49,7 +49,11 @@ fi
 python -m integration.pack --live --provider deepseek
 status=$?
 echo
-echo "三份报告在 course_pack/live/MSFT、course_pack/live/CSCO、course_pack/live/AAPL。"
-echo "每家公司的 PDF 在该目录的 reports/ 下面。"
+if [[ "$status" -eq 0 ]]; then
+  echo "PDF 路径：course_pack/live/{MSFT,CSCO,AAPL}/reports/{股票代码}.pdf。"
+  echo "请查看每只股票的运行状态。manual_review 表示报告仍需人工审核。"
+else
+  echo "本次实况运行有失败。请查看上方状态和对应公司 runs/ 目录下的日志。"
+fi
 pause
 exit "$status"

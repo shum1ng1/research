@@ -13,6 +13,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
 
 from integration.member_a.schemas.member_a import aware_datetime
+from integration.reporting_periods import comparable_prior_year
 from integration.member_a.tools.member_a_common import known_by
 from integration.member_a.tools.normalization import ADDITIVE
 from integration.member_a.tools.yahoo_tools import COLUMNS, clean_bars
@@ -110,6 +111,9 @@ def verify_numeric_claims(data_bundle, analysis_bundle, claim_manifest):
                 issues.append(issue("FIN_CURRENCY_MISMATCH", "Calculation mixes currencies without explicit FX inputs", "analysis", metrics=[mid]))
             if fid in {"operating_margin", "gross_margin", "net_margin", "fcf", "free_cash_flow", "debt_to_equity", "current_ratio"} and not _same_period(inputs):
                 issues.append(issue("FIN_PERIOD_MISMATCH", "Ratio/FCF inputs must have matching reporting periods", "analysis", metrics=refs))
+            if fid == "revenue_growth_yoy" and metric.get("value") is not None:
+                if len(inputs) != 2 or not comparable_prior_year(*inputs):
+                    issues.append(issue("FIN_PERIOD_MISMATCH", "Revenue growth needs comparable current and prior-year periods", "analysis", metrics=refs))
             for context in ["scope", "accounting_standard", "reporting_basis"]:
                 contexts = {m[context] for m in inputs if m.get(context) is not None}
                 if len(contexts) > 1:

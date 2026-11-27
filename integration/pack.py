@@ -22,7 +22,7 @@ def run_pack(output_root, *, offline=True, provider="deepseek"):
     for ticker in TICKERS:
         summary = orchestrate(
             ticker, AS_OF, TIMEZONE, offline=offline, output_root=str(folder / ticker),
-            run_id=ticker, provider=provider,
+            run_id=ticker, provider=provider, report_dir=None if offline else "reports",
         )
         results.append(summary)
     notice = folder / "README.md"

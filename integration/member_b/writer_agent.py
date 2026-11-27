@@ -7,13 +7,13 @@
                        feedback=None) -> dict
 - analysis_bundle 是 C 解开上一阶段外壳后的 payload，不是外壳本身。
 - 只把结构化分析转成固定模板，不新增数字、不新增结论、不改写 evidence_id。
-- 有已计算指标时写出 SVG 图表，并把图中的展示数字登记进 claim_manifest。
+- 从已计算指标生成表格，从同一行情窗口绘制股价图。
 - 导出 A4 PDF，填写真实的 pdf_path 与 page_count。超过 10 页则本阶段失败。
 """
 import os
 
 from integration.member_b.tools import claim_manifest, report_template
-from integration.member_b.tools.charts import build_charts
+from integration.member_b.tools.charts import build_price_chart
 from integration.member_b.tools.formatting import prefix_from_bundle
 from integration.member_b.tools.pdf_export import export_a4_pdf
 from integration.member_b.analysis_agent import _envelope, _revision
@@ -41,12 +41,19 @@ def run(request, config, data_bundle, analysis_bundle, feedback=None):
     prefix = prefix_from_bundle(data_bundle["bundle_id"])
     run_id = request.get("run_id", "unknown")
     run_dir = config.get("run_dir") or f"runs/{run_id}"
+    report_dir = config.get("report_dir") or f"{run_dir}/reports"
     output_root = config.get("output_root", ".")
     ticker = request.get("ticker") or data_bundle.get("company", {}).get("company_id", "REPORT")
-    report_path = f"{run_dir}/reports/{ticker}_draft.md"
+    report_path = f"{report_dir}/{ticker}_draft.md"
 
-    layout = report_template.build_layout(analysis_bundle, data_bundle, config, request)
     warnings = []
+    try:
+        chart = build_price_chart(analysis_bundle, data_bundle, run_dir, output_root or ".",
+                                  config.get("data_root") or output_root or ".")
+        layout = report_template.build_layout(analysis_bundle, data_bundle, config, request, chart)
+    except (OSError, ValueError) as exc:
+        return _envelope(run_id, "writer", "failed", {},
+                         errors=[{"code": "REPORT_INPUT", "message": str(exc), "retryable": False}], config=config)
     template_id = config.get("template_id", "equity_note_v0.1")
     if (config.get("llm") or {}).get("enabled"):
         from integration.llm_author import author_paragraphs
@@ -61,51 +68,12 @@ def run(request, config, data_bundle, analysis_bundle, feedback=None):
             layout["paragraphs"][paragraph_id] = text
         template_id = "equity_note_v0.1_model_paragraphs"
         warnings.append("报告段落由模型提交，且必须原样包含已审核的分析句；没有新数字。失败时不会改回模板。")
-    report_dir = run_dir
-    charts, caption, chart_mentions, chart_metric_ids, chart_note = build_charts(
-        analysis_bundle, report_dir, output_root)
-    if caption:
-        pid = f"P{len(layout['paragraphs']) + 1:03d}"
-        layout["paragraphs"][pid] = caption
-        layout["sections"][2]["paragraph_ids"].append(pid)
-    elif chart_note:
-        warnings.append(chart_note)
-    report_template.render_markdown(layout, analysis_bundle, data_bundle,
-                                    report_path, output_root)
     claims = claim_manifest.build_claim_manifest(
         analysis_bundle, layout, data_bundle, config)
-    claims["claim_manifest"].extend(layout.get("extra_claims") or [])
-    if caption:
-        claims["claim_manifest"].append({
-            "report_claim_id": "RCHART",
-            "text": caption,
-            "section": "S03",
-            "paragraph": len(layout["paragraphs"]),
-            "analysis_claim_ids": [],
-            "metric_ids": chart_metric_ids,
-            "evidence_ids": [],
-            "claim_type": "analyst_inference",
-            "numeric_mentions": chart_mentions,
-        })
-        claims["charts"] = charts
     try:
-        pdf_rel = f"{run_dir}/reports/{ticker}.pdf"
-        chart_file = None
-        if charts:
-            chart_file = os.path.join(output_root or ".", charts[0]["path"])
-        blocks = [{"heading": "Equity research draft"}]
-        for section in layout["sections"]:
-            blocks.append({"heading": section["heading"]})
-            for pid in section["paragraph_ids"]:
-                text = layout["paragraphs"][pid]
-                blocks.append({"text": text})
-                if chart_file and text.startswith("Chart:"):
-                    blocks.append({"text": "", "image": True})
-        page_count = export_a4_pdf(
-            blocks,
-            os.path.join(output_root or ".", pdf_rel),
-            image_path=chart_file,
-        )
+        report_template.render_markdown(layout, report_path, output_root or ".")
+        pdf_rel = f"{report_dir}/{ticker}.pdf"
+        page_count = export_a4_pdf(layout, os.path.join(output_root or ".", pdf_rel))
     except Exception as exc:
         return _envelope(run_id, "writer", "failed", {},
                          errors=[{"code": "PDF_EXPORT", "message": f"{type(exc).__name__}: {exc}",
@@ -143,8 +111,8 @@ def run(request, config, data_bundle, analysis_bundle, feedback=None):
         "page_count": page_count,
         "sections": layout["sections"],
         "claim_manifest": claims["claim_manifest"],
-        "charts": claims["charts"],
+        "charts": [chart["record"]] if chart else [],
         "citations": claims["citations"],
     }
     return _envelope(run_id, "writer", status, payload, warnings=warnings,
-                     artifacts=[report_path, pdf_rel], config=config)
+                     artifacts=[report_path, pdf_rel] + ([chart["record"]["path"]] if chart else []), config=config)

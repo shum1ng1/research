@@ -52,6 +52,8 @@ def compute_valuation_metrics(data_bundle, price_stats, config=None):
         "rounding_policy": rounding_policy(4),
         "calculation_status": status,
         "eps_period_type": (eps or {}).get("period_type"),
+        "eps_period_end": (eps or {}).get("period_end"),
+        "price_date": price_stats.get("coverage_end"),
     }
     assumptions = [{
         "assumption_id": assumption_id,

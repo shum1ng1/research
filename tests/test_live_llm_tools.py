@@ -170,7 +170,7 @@ class AuthorTests(unittest.TestCase):
         def metric(metric_id, name, value, end):
             return {
                 "metric_id": metric_id, "name": name, "value": value, "unit": "currency",
-                "currency": "USD", "period_start": "2025-01-01", "period_end": end,
+                "currency": "USD", "period_start": f"{end[:4]}-07-01", "period_end": end,
                 "period_type": "quarter", "evidence_id": "E1",
             }
         return {
@@ -217,12 +217,16 @@ class AuthorTests(unittest.TestCase):
                         text = f"The {name} is unavailable and no estimate was made"
                     else:
                         text = "This item is unavailable and no estimate was made"
+                    if slot.get("required_text"):
+                        text += ". " + slot["required_text"]
+                    if slot.get("exact_statement"):
+                        text = slot["exact_statement"]
                     statements.append({"claim_id": slot["claim_id"], "statement": text})
                 return _tool_call("submit_finding_statements", {"statements": statements}, "submit"), {
                     "provider": "deepseek", "model": "deepseek-flash"}
             paragraphs = [{
                 "claim_id": item["claim_id"],
-                "text": "Report paragraph: " + item["statement"],
+                "text": item["statement"] if item.get("verbatim_only") else "Report paragraph: " + item["statement"],
             } for item in payload["statements"]]
             return _tool_call("submit_paragraphs", {"paragraphs": paragraphs}, "paragraphs"), {
                 "provider": "deepseek", "model": "deepseek-flash"}
@@ -292,6 +296,7 @@ class ToolLoopFixTests(unittest.TestCase):
         self.assertEqual(_check_text("Revenue grew 10.0% year over year.", ["10.0%"], []), "")
         self.assertIn("referenced metric", _check_text(
             "The referenced metric is 10.0%.", ["10.0%"], [], "revenue growth", True))
+        self.assertIn("number", _check_text("Revenue grew 10.0% by 2026-11-12.", ["10.0%"], []))
 
     def test_read_tool_success_is_logged_ok(self):
         def complete_stub(messages, config, tools=None, json_output=False):

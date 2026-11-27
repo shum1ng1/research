@@ -14,6 +14,7 @@ statement，不得改数字、ID、claim_type、metric_ids、evidence_ids。
 """
 from integration.member_b.tools import finance_metrics, price_metrics, valuation
 from integration.member_b.tools.formatting import display_string, json_safe, metric_label, prefix_from_bundle
+from integration.member_b.tools.report_evidence import guidance_passage
 
 SCHEMA_VERSION = "0.1"
 
@@ -53,6 +54,17 @@ _MARGIN_SCENARIO = (
 )
 
 
+def valuation_disclosure(metric):
+    basis = metric.get("eps_period_type")
+    if basis == "quarter":
+        return "The ratio uses quarterly earnings per share and is not an annualized multiple."
+    if basis in {"year", "annual"}:
+        return "The ratio uses full-year earnings per share."
+    if basis == "ttm":
+        return "The ratio uses trailing twelve-month earnings per share."
+    return "The ratio uses the latest available earnings per share; the earnings period is unspecified."
+
+
 def _statement_for(metric):
     """正文数字与 numeric_mention 共用 display_string，逐字一致。"""
     name = metric["name"]
@@ -61,17 +73,8 @@ def _statement_for(metric):
                            sign=name.startswith("price_return"),
                            display_unit=metric.get("display_unit"))
     if name == "pe_ratio":
-        period = metric.get("eps_period_type") or ""
-        if period == "quarter":
-            eps_words = "quarterly earnings per share. It is not an annualized multiple"
-        elif period in {"year", "annual"}:
-            eps_words = "annual earnings per share"
-        elif period == "ttm":
-            eps_words = "trailing-twelve-month earnings per share"
-        else:
-            eps_words = "the latest available earnings per share. It is not annualized unless that period is already a full year"
-        return (f"The price-to-earnings ratio is calculated from the latest close divided by {eps_words}. "
-                f"The price-to-earnings ratio is {shown}. This is not a valuation opinion.")
+        return (f"The price-to-earnings ratio is calculated by dividing the latest close by earnings per share. "
+                f"The price-to-earnings ratio is {shown} times. {valuation_disclosure(metric)}")
     if name == "free_cash_flow":
         return (f"Free cash flow is calculated from operating cash flow minus capital expenditure. "
                 f"Free cash flow is {shown}. It is not a line item copied from the filing.")
@@ -79,8 +82,7 @@ def _statement_for(metric):
         return (f"Free-cash-flow margin is calculated from free cash flow and revenue. "
                 f"Free-cash-flow margin is {shown}. It is not a line item copied from the filing.")
     if name == "revenue_growth_yoy":
-        return (f"Revenue growth is calculated from the latest two revenue periods. "
-                f"Revenue growth is {shown}.")
+        return f"Year-over-year revenue growth is calculated at {shown} for comparable reporting periods."
     if name == "gross_margin":
         return (f"Gross margin is calculated from gross profit and revenue for the same period. "
                 f"Gross margin is {shown}.")
@@ -139,21 +141,19 @@ def _build_findings(derived, data_bundle, prefix):
             "statement": _statement_for(d),
             "claim_type": ctype,
             "metric_ids": [d["metric_id"]],
-            "evidence_ids": evidence_ids if ctype == "reported_fact" else [],
+            "evidence_ids": evidence_ids,
             "assumption_ids": [],
         })
 
-    # 管理层指引单列；原文里的数字交由 Reviewer 检查引用支持
-    for ev in data_bundle.get("evidence", []):
-        quote = (ev.get("quote") or "").lower()
-        if "management" not in quote and "guidance" not in quote:
-            continue
+    guidance = guidance_passage(data_bundle)
+    if guidance:
+        quote, evidence_id = guidance
         findings.append({
             "claim_id": f"{prefix}C{len(findings) + 1:03d}",
-            "statement": "Management guidance: " + (ev.get("quote") or "").replace("\n", " ").strip(),
+            "statement": f'Management guidance excerpt: "{quote}"',
             "claim_type": "management_guidance",
             "metric_ids": [],
-            "evidence_ids": [ev["evidence_id"]],
+            "evidence_ids": [evidence_id],
             "assumption_ids": [],
         })
 

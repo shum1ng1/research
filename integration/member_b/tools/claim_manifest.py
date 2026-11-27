@@ -77,7 +77,9 @@ def build_claim_manifest(analysis, layout, data_bundle, config=None):
             "numeric_mentions": mentions,
         })
 
-        for evid in finding.get("evidence_ids", []):
+    manifest.extend(layout.get("extra_claims") or [])
+    for claim in manifest:
+        for evid in claim.get("evidence_ids", []):
             ev = evidence.get(evid)
             if not ev:
                 continue
